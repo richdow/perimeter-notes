@@ -366,6 +366,17 @@
     .map-list-item { display: block; width: 100%; text-align: left; background: var(--panel-2); border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; margin-top: 6px; color: var(--text); }
     .map-list-item b { display: block; } .map-list-item span { font-size: 13px; color: var(--muted); }
     .map-list-item .kw-row { margin-top: 6px; }
+    /* ---------- about ---------- */
+    .about .card { margin-bottom: 12px; }
+    .about h2 { font-size: 17px; margin: 0 0 8px; letter-spacing: -.01em; }
+    .about p, .about li { font-size: 15px; line-height: 1.5; color: #d3dbe5; }
+    .about p { margin: 0 0 8px; } .about p:last-child { margin-bottom: 0; }
+    .about ul { margin: 0; padding-left: 20px; } .about li { margin-bottom: 8px; } .about li:last-child { margin-bottom: 0; }
+    .about b { color: var(--text); }
+    .about a { color: var(--blue); }
+    .about .danger-zone { border-color: #63282a; }
+    .about .danger-zone .btn { margin-top: 6px; }
+    .about-foot { margin: 4px 2px 8px; }
     @media (prefers-reduced-motion: reduce) {
       *, *::before, *::after { animation: none !important; transition: none !important; }
     }
@@ -438,6 +449,7 @@
           <button class="btn secondary" id="btnImport">Import backup</button>
         </div>
         <input type="file" id="importFile" accept="application/json,.json" hidden />
+        <button class="btn ghost wide gap-top" id="btnAbout">About &amp; privacy</button>
         <p class="tiny">Walks never leave this phone unless you send them. Safari can clear data for websites you haven't opened in a while, so add this page to your Home Screen and export a backup now and then.</p>
       </div>
     </main>
@@ -555,6 +567,75 @@
       <button class="btn danger wide gap-top" id="btnDelete">Delete walk</button>
       <p class="tiny">Send diagram opens the iPhone share sheet (Messages or Mail) with a PNG map plus a full-screen HTML report. Mail draft can't attach the graphic — use Send diagram for that.</p>
     </div>
+  </section>
+
+  <!-- ================= ABOUT & PRIVACY ================= -->
+  <section id="about" class="screen" aria-label="About and privacy">
+    <header class="topbar">
+      <button class="btn ghost small" id="btnAboutBack" aria-label="Back to home">‹ Home</button>
+      <div class="brand" style="flex:1;justify-content:center"><span class="ttl">About &amp; privacy</span></div>
+      <span style="width:72px" aria-hidden="true"></span>
+    </header>
+    <main class="home-body about">
+      <div class="card">
+        <h2>The short version</h2>
+        <p>Perimeter Notes is a free, simple web page. There are no accounts and no server of ours. Your walks are saved only in Safari on <b>your own iPhone</b>. Nobody else can see them, including the person who made this app.</p>
+        <p>No analytics, no ads, no cookies, no tracking. No AI and no paid services.</p>
+      </div>
+
+      <div class="card">
+        <h2>What stays on your phone</h2>
+        <p>Walks, GPS trails, pins and notes, labels, keywords, addresses and settings are all kept in this site's storage in Safari on this iPhone. They only leave it if <b>you</b> send them with Send diagram, Mail draft or Export backup.</p>
+      </div>
+
+      <div class="card">
+        <h2>What leaves your phone</h2>
+        <ul>
+          <li><b>The page itself.</b> The app is hosted on GitHub Pages. Like any website host, GitHub keeps standard visitor logs (such as IP address and browser type) when the page loads.</li>
+          <li><b>Address lookup.</b> The first GPS point of each walk is sent to OpenStreetMap's Nominatim service to find the street, city and state. If that fails, the same point goes to BigDataCloud's free lookup instead. Nothing else about the walk is sent. Each place is looked up once and remembered on the phone.</li>
+          <li><b>Street map.</b> When you zoom in on the all-walks map with Streets on, map images are downloaded from OpenStreetMap's tile servers. That reveals which area you're looking at. Turn Streets off to stop it. Country and state outlines are built in and need no connection.</li>
+          <li><b>Voice dictation.</b> The mic button uses Apple's speech recognition in Safari, which may send the audio to Apple under Apple's privacy policy. Typing never leaves the phone.</li>
+          <li><b>Only when you tap them:</b> Open in Maps sends that pin's coordinates to Apple Maps. Send diagram and Mail draft share what you choose, with whoever you choose.</li>
+        </ul>
+        <p>Those services see your IP address like any website does. Recording a walk itself needs no internet at all.</p>
+      </div>
+
+      <div class="card">
+        <h2>Keep your walks safe</h2>
+        <ul>
+          <li>Safari can erase website data if you clear history/website data, or if you haven't opened this site in Safari for about a week. Adding it to your Home Screen avoids the one-week rule.</li>
+          <li>Use <b>Export backup</b> now and then, and keep the file somewhere safe (Files, iCloud Drive, email to yourself).</li>
+          <li>Deleting the app from your Home Screen or changing phones doesn't move your walks. Export first, then Import on the new phone.</li>
+        </ul>
+      </div>
+
+      <div class="card">
+        <h2>Tips</h2>
+        <ul>
+          <li><b>Add to Home Screen:</b> in Safari tap Share → Add to Home Screen. It opens full-screen and works offline.</li>
+          <li><b>Keep the screen on while walking.</b> iPhone stops GPS for web pages when the screen locks or Safari goes to the background.</li>
+          <li><b>Use the https:// address.</b> iPhone only allows location and the microphone on secure pages.</li>
+          <li>Stand still for a few seconds before dropping a pin for the most accurate spot.</li>
+        </ul>
+      </div>
+
+      <div class="card danger-zone">
+        <h2>Delete everything</h2>
+        <p>Erases all walks, notes, keywords, addresses and settings from this iPhone, plus the app's offline copy. This can't be undone, so export a backup first if you might want them.</p>
+        <button class="btn danger wide" id="btnDeleteAll">Delete all data on this phone</button>
+      </div>
+
+      <div class="card credits">
+        <h2>Credits</h2>
+        <ul>
+          <li>Addresses and street map: © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap contributors</a>, available under the Open Database License (ODbL).</li>
+          <li>Fallback address lookup: <a href="https://www.bigdatacloud.com/" target="_blank" rel="noopener">BigDataCloud</a> (free client-side reverse geocoding).</li>
+          <li>Country and state borders: <a href="https://www.naturalearthdata.com/" target="_blank" rel="noopener">Natural Earth</a> (public domain).</li>
+        </ul>
+      </div>
+
+      <p class="tiny about-foot">Provided as-is with no warranty, for personal notes. GPS can be inaccurate, especially indoors (often 20–50 m off), so don't rely on it for anything safety-critical, legal or official.</p>
+    </main>
   </section>
 
   <!-- ================= ALL-WALKS MAP ================= -->
@@ -857,7 +938,7 @@
   }
 
   /* ===================== Screens + viewport (iOS keyboard / dvh) ===================== */
-  const screens = { home: $("home"), walk: $("walk"), review: $("review"), map: $("mapScreen") };
+  const screens = { home: $("home"), walk: $("walk"), review: $("review"), map: $("mapScreen"), about: $("about") };
   function current() { return Object.keys(screens).find((k) => screens[k].classList.contains("on")); }
   function show(name) {
     Object.values(screens).forEach((el) => el.classList.remove("on"));
@@ -3297,6 +3378,35 @@
     reader.onerror = () => toast("Couldn't read that file");
     reader.readAsText(file);
   }
+
+  /* ===================== About & privacy ===================== */
+  function openAbout() { show("about"); $("about").querySelector(".about").scrollTop = 0; }
+  // Removes every key this app writes (all start with "perimeter-notes"), its offline caches and
+  // its service worker, then reloads into a clean app.
+  function deleteAllData() {
+    const n = loadAll().length;
+    if (!confirm("Delete ALL Perimeter Notes data on this iPhone?\n\nThis erases " + n + (n === 1 ? " saved walk" : " saved walks") +
+      ", plus notes, keywords, addresses, settings and the offline copy. It can't be undone.\n\nExport a backup first if you might want them.")) { toast("Nothing deleted"); return; }
+    const typed = prompt("Last check: type DELETE to erase everything.");
+    if (String(typed || "").trim().toUpperCase() !== "DELETE") { toast("Nothing deleted"); return; }
+    try {
+      const keys = [];
+      for (let i = 0; i < localStorage.length; i++) keys.push(localStorage.key(i));
+      keys.filter((k) => k && (k.startsWith("perimeter-notes") || k === "__pn_probe")).forEach((k) => localStorage.removeItem(k));
+    } catch (_) {}
+    const jobs = [];
+    if (window.caches && caches.keys) jobs.push(caches.keys().then((ks) => Promise.all(ks.filter((k) => k.startsWith("perimeter-notes")).map((k) => caches.delete(k)))));
+    if (navigator.serviceWorker && navigator.serviceWorker.getRegistrations) jobs.push(navigator.serviceWorker.getRegistrations().then((rs) => Promise.all(rs.map((r) => r.unregister()))));
+    const done = () => {
+      try { sessionStorage.setItem("pn-deleted", "1"); } catch (_) {}
+      location.reload();
+    };
+    Promise.all(jobs.map((j) => j.catch(() => {}))).then(done, done);
+  }
+  $("btnAbout").onclick = openAbout;
+  $("btnAboutBack").onclick = goHome;
+  $("btnDeleteAll").onclick = deleteAllData;
+  try { if (sessionStorage.getItem("pn-deleted")) { sessionStorage.removeItem("pn-deleted"); setTimeout(() => toast("All Perimeter Notes data was deleted from this phone", 3500), 300); } } catch (_) {}
 
   /* ===================== Wiring ===================== */
   $("btnBegin").onclick = () => startWalk(false);
