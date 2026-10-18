@@ -1,7 +1,9 @@
 /* Perimeter Notes service worker: makes the app open and run with no connection.
    Pages: network-first (so updates arrive) with a short timeout, falling back to cache.
-   Other same-origin files: stale-while-revalidate. Bump VERSION to drop old caches. */
-const VERSION = "c5f33c78e6";
+   Other same-origin files: stale-while-revalidate. Bump VERSION to drop old caches.
+   Cross-origin requests (OSM street tiles, geocoding) are never touched or cached here; they
+   use only the browser HTTP cache, as the OSM tile usage policy expects. */
+const VERSION = "9a4c8cc2a2";
 const CACHE = "perimeter-notes-" + VERSION;
 const CORE = ["./", "./index.html", "./manifest.webmanifest", "./icon-192.png", "./icon-512.png", "./apple-touch-icon.png"];
 const NET_TIMEOUT = 4000;

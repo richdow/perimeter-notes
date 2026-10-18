@@ -352,7 +352,12 @@
     .map-zoom { position: absolute; right: 12px; bottom: calc(44px + var(--safe-b)); display: flex; flex-direction: column; gap: 8px; }
     .map-zoom .btn { width: 48px; height: 48px; min-height: 48px; padding: 0; font-size: 26px; font-weight: 600; background: rgba(28,34,43,.92); line-height: 1; }
     .map-fit { position: absolute; left: 12px; bottom: calc(44px + var(--safe-b)); background: rgba(28,34,43,.92); }
-    .map-attr { position: absolute; left: 0; right: 0; bottom: 0; padding: 4px 10px calc(4px + var(--safe-b)); font-size: 11px; color: #8796a6; background: rgba(6,9,13,.75); text-align: center; pointer-events: none; }
+    .map-attr { position: absolute; left: 0; right: 0; bottom: 0; padding: 4px 10px calc(4px + var(--safe-b)); font-size: 11px; color: #8796a6; background: rgba(6,9,13,.8); text-align: center; }
+    .map-attr a { color: #b9c6d4; }
+    .map-streets { position: absolute; left: 12px; bottom: calc(98px + var(--safe-b)); background: rgba(28,34,43,.92); }
+    .map-streets[aria-pressed="false"] { color: var(--muted); }
+    .map-note { position: absolute; left: 50%; transform: translateX(-50%); top: 12px; max-width: calc(100% - 24px); width: max-content; background: rgba(11,13,16,.9); border: 1px solid var(--line); border-radius: 999px; padding: 6px 12px; font-size: 13px; font-weight: 600; color: #c9d4e0; pointer-events: none; }
+    .map-filter:not([hidden]) ~ .map-note { top: 64px; }
     .map-filter { position: absolute; left: 10px; right: 10px; top: 10px; display: flex; align-items: center; justify-content: space-between; gap: 10px; background: rgba(11,13,16,.88); border: 1px solid var(--line); border-radius: 14px; padding: 6px 6px 6px 12px; font-size: 14px; font-weight: 600; }
     .map-filter .btn { min-height: 38px; flex: none; }
     .map-empty { position: absolute; left: 24px; right: 24px; top: 40%; text-align: center; color: var(--muted); background: rgba(11,13,16,.85); border: 1px solid var(--line); border-radius: 14px; padding: 14px; pointer-events: none; }
@@ -568,8 +573,10 @@
         <button type="button" class="btn secondary" id="mapZoomIn" aria-label="Zoom in">+</button>
         <button type="button" class="btn secondary" id="mapZoomOut" aria-label="Zoom out">−</button>
       </div>
+      <div id="mapNote" class="map-note" role="status" aria-live="polite" hidden></div>
+      <button type="button" class="btn secondary small map-streets" id="btnStreets" aria-pressed="true">Streets on</button>
       <button type="button" class="btn secondary small map-fit" id="btnFitAll">Fit all walks</button>
-      <div class="map-attr">Borders: Natural Earth · Addresses © OpenStreetMap contributors</div>
+      <div class="map-attr">Map data &amp; streets © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap contributors</a> · Borders: Natural Earth · <a href="https://www.openstreetmap.org/fixthemap" target="_blank" rel="noopener">Fix the map</a></div>
     </div>
   </section>
 
@@ -2647,6 +2654,124 @@
     mapState.anim = requestAnimationFrame(step);
   }
 
+  /* ---------- street tiles (online only) ---------- */
+  // OpenStreetMap standard tiles (tile.openstreetmap.org). Tile usage policy: visible
+  // "© OpenStreetMap contributors" attribution, browser Referer/User-Agent, normal HTTP caching,
+  // and no bulk download, prefetch or offline storage. We only request tiles in the current view,
+  // keep a small in-memory LRU of decoded images, and the service worker never caches them.
+  // The light OSM style is turned dark on the canvas (grayscale + invert + lift) to fit the app.
+  const TILES = {
+    URL: "https://tile.openstreetmap.org/{z}/{x}/{y}.png",
+    FADE_FROM: 10.5, FADE_TO: 12,     // map zoom where streets start / finish fading in (~city level)
+    MAX_Z: 19, LRU: 150, PARALLEL: 6, RETRY_MS: 30000
+  };
+  const tileCache = new Map();        // key → { img, state: "loading" | "ok" | "error", until }
+  let tileQueue = [], tileActive = 0, tileCanvas = null, tileWanted = new Set();
+  const streetsOn = () => prefs.streets !== false;
+  function tileFade(z) { return Math.max(0, Math.min(1, (z - TILES.FADE_FROM) / (TILES.FADE_TO - TILES.FADE_FROM))); }
+  function touchTile(key) { const t = tileCache.get(key); if (t) { tileCache.delete(key); tileCache.set(key, t); } return t; }
+  function evictTiles() {
+    if (tileCache.size <= TILES.LRU) return;
+    for (const [k, t] of tileCache) {
+      if (tileCache.size <= TILES.LRU) break;
+      if (t.state === "loading" || tileWanted.has(k)) continue;
+      tileCache.delete(k);
+    }
+  }
+  function pumpTiles() {
+    while (tileActive < TILES.PARALLEL && tileQueue.length) {
+      const key = tileQueue.shift();
+      if (!tileWanted.has(key) || tileCache.has(key)) continue;
+      const [z, x, y] = key.split("/");
+      const img = new Image();
+      const rec = { img, state: "loading", until: 0 };
+      tileCache.set(key, rec);
+      tileActive++;
+      img.crossOrigin = "anonymous";       // tile.openstreetmap.org sends CORS headers; keeps the canvas readable
+      img.decoding = "async";
+      img.onload = () => { rec.state = "ok"; tileActive--; evictTiles(); pumpTiles(); requestMapDraw(); };
+      img.onerror = () => { rec.state = "error"; rec.until = Date.now() + TILES.RETRY_MS; tileActive--; pumpTiles(); requestMapDraw(); };
+      img.src = TILES.URL.replace("{z}", z).replace("{x}", x).replace("{y}", y);
+    }
+  }
+  // Returns { drawn, failed, needed } for the status note.
+  function drawTiles(ctx, v, W, w, h, dpr, alpha) {
+    const tz = Math.max(0, Math.min(TILES.MAX_Z, Math.round(v.z)));
+    const n = Math.pow(2, tz), size = W / n;              // css px per tile at this zoom
+    const x0 = Math.floor((v.x - w / 2 / W) * n), x1 = Math.floor((v.x + w / 2 / W) * n);
+    const y0 = Math.max(0, Math.floor((v.y - h / 2 / W) * n)), y1 = Math.min(n - 1, Math.floor((v.y + h / 2 / W) * n));
+    const need = [];
+    for (let ty = y0; ty <= y1; ty++) for (let tx = x0; tx <= x1; tx++) if (tx >= 0 && tx < n) need.push([tx, ty]);
+    const cx = v.x * n, cy = v.y * n;
+    need.sort((a, b) => Math.hypot(a[0] + 0.5 - cx, a[1] + 0.5 - cy) - Math.hypot(b[0] + 0.5 - cx, b[1] + 0.5 - cy));
+    // offscreen layer, so the dark-style compositing doesn't touch the rest of the map
+    if (!tileCanvas) tileCanvas = document.createElement("canvas");
+    const pw = Math.round(w * dpr), ph = Math.round(h * dpr);
+    if (tileCanvas.width !== pw || tileCanvas.height !== ph) { tileCanvas.width = pw; tileCanvas.height = ph; }
+    const t = tileCanvas.getContext("2d");
+    t.setTransform(1, 0, 0, 1, 0, 0);
+    t.globalCompositeOperation = "source-over";
+    t.fillStyle = "#f2efe9";                              // OSM land colour → dark after inversion
+    t.fillRect(0, 0, pw, ph);
+    t.setTransform(dpr, 0, 0, dpr, 0, 0);
+    t.imageSmoothingEnabled = true;
+    const now = Date.now();
+    let drawn = 0, failed = 0;
+    tileWanted = new Set();
+    const queue = [];
+    for (const [tx, ty] of need) {
+      const key = tz + "/" + tx + "/" + ty;
+      tileWanted.add(key);
+      const sx = (tx / n - v.x) * W + w / 2, sy = (ty / n - v.y) * W + h / 2;
+      let rec = touchTile(key);
+      if (rec && rec.state === "error" && now > rec.until) { tileCache.delete(key); rec = null; }
+      if (!rec) queue.push(key);
+      if (rec && rec.state === "ok") { t.drawImage(rec.img, sx, sy, size + 0.5, size + 0.5); drawn++; continue; }
+      if (rec && rec.state === "error") failed++;
+      // stand-in while loading: scale up a cached parent tile
+      for (let up = 1; up <= 4 && tz - up >= 0; up++) {
+        const pz = tz - up, f = Math.pow(2, up), px = Math.floor(tx / f), py = Math.floor(ty / f);
+        const pr = tileCache.get(pz + "/" + px + "/" + py);
+        if (pr && pr.state === "ok") {
+          const ss = 256 / f;
+          t.drawImage(pr.img, (tx - px * f) * ss, (ty - py * f) * ss, ss, ss, sx, sy, size + 0.5, size + 0.5);
+          break;
+        }
+      }
+    }
+    tileQueue = queue;                                     // only what's on screen now; nothing ahead of time
+    pumpTiles();
+    // dark style: grayscale → invert → lift
+    t.setTransform(1, 0, 0, 1, 0, 0);
+    t.globalCompositeOperation = "saturation"; t.fillStyle = "#808080"; t.fillRect(0, 0, pw, ph);
+    t.globalCompositeOperation = "difference"; t.fillStyle = "#ffffff"; t.fillRect(0, 0, pw, ph);
+    t.globalCompositeOperation = "screen"; t.fillStyle = "#1b222c"; t.fillRect(0, 0, pw, ph);
+    t.globalCompositeOperation = "source-over";
+    ctx.save();
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.globalAlpha = alpha;
+    ctx.drawImage(tileCanvas, 0, 0);
+    ctx.restore();
+    // slight dim so trails, pins and labels stay readable over streets
+    ctx.fillStyle = "rgba(6,9,13," + (0.28 * alpha).toFixed(3) + ")";
+    ctx.fillRect(0, 0, w, h);
+    return { drawn, failed, needed: need.length };
+  }
+  function renderStreetsUi(status) {
+    const b = $("btnStreets");
+    b.setAttribute("aria-pressed", String(streetsOn()));
+    b.textContent = streetsOn() ? "Streets on" : "Streets off";
+    const note = $("mapNote");
+    let msg = "";
+    if (status === "offline") msg = "Streets need internet — showing outlines only";
+    else if (status === "failed") msg = "Streets couldn't load — showing outlines only";
+    note.textContent = msg;
+    note.hidden = !msg;
+  }
+  $("btnStreets").onclick = () => { prefs.streets = !streetsOn(); savePrefs(); requestMapDraw(); renderStreetsUi(""); };
+  window.addEventListener("online", () => { if (current() === "map") requestMapDraw(); });
+  window.addEventListener("offline", () => { if (current() === "map") requestMapDraw(); });
+
   /* ---------- drawing ---------- */
   function requestMapDraw() {
     if (mapState.raf) return;
@@ -2694,6 +2819,20 @@
     ringsPath(ctx, B.countries, W, v.x, v.y, hw, hh, box);
     ctx.fillStyle = "#121920";
     ctx.fill("evenodd");
+    // streets (online, zoomed in) go above the land fill and below every outline and walk
+    const fade = streetsOn() ? tileFade(v.z) : 0;
+    let streetStatus = "";
+    tileWanted = new Set();
+    if (fade > 0) {
+      if (navigator.onLine === false) streetStatus = "offline";
+      else {
+        const st = drawTiles(ctx, v, W, w, h, dpr, fade);
+        if (st.needed && st.failed === st.needed) streetStatus = "failed";
+        ringsPath(ctx, B.countries, W, v.x, v.y, hw, hh, box);   // rebuild the path for the outline stroke
+      }
+    } else tileQueue = [];
+    renderStreetsUi(streetStatus);
+    mapState.streets = { fade, status: streetStatus };
     ctx.lineJoin = "round";
     ctx.strokeStyle = "rgba(92,190,120,.75)";
     ctx.lineWidth = v.z < 3 ? 0.6 : 0.9;
@@ -2832,7 +2971,7 @@
     let best = opts[0];
     opts.forEach((o) => { if (o[0] * o[2] / mPerPx <= 110) best = o; });
     const px = best[0] * best[2] / mPerPx;
-    const x = 14, y = h - 104;
+    const x = 14, y = h - 156;
     ctx.strokeStyle = "rgba(0,0,0,.6)"; ctx.lineWidth = 4; ctx.lineCap = "butt";
     const bar = () => { ctx.beginPath(); ctx.moveTo(x, y - 5); ctx.lineTo(x, y); ctx.lineTo(x + px, y); ctx.lineTo(x + px, y - 5); ctx.stroke(); };
     bar();
@@ -3280,7 +3419,7 @@
     geo, state, CFG, onFix, loadAll, activeDuration, GC, placeShort, placeFull,
     geocodeTick, kickGeocoder, geoQueue: () => readJson(GEO_QUEUE),
     map: {
-      state: mapState, MAP, toMerc,
+      state: mapState, MAP, toMerc, TILES, tileCache, tileStats: () => ({ size: tileCache.size, active: tileActive, wanted: tileWanted.size }),
       view: () => mapState.view && { lng: unMercX(mapState.view.x), lat: unMercY(mapState.view.y), z: mapState.view.z },
       project: (lat, lng) => toScreen(mercX(lng), mercY(lat)),
       hits: () => mapState.hits.map((h) => Object.assign({}, h)),
