@@ -1,0 +1,2024 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <!--
+    Perimeter Notes (v2)
+    Host this file over HTTPS (or localhost). iOS Safari blocks Geolocation
+    and the microphone on file://.
+    Settings → Privacy & Security → Location Services → Safari Websites → While Using.
+    Safari: aA menu → Website Settings → Location / Microphone → Allow.
+    Indoor GPS drifts 20–50m+; pins are notes on a sketch, not measured rooms.
+    Walks are stored only on this iPhone (localStorage key perimeter-notes.v1).
+    v2 keeps the same key and record shape; it only adds optional fields
+    (point.gap, pin.n) and tolerates/cleans older or partial records on load.
+  -->
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="theme-color" content="#0b0d10" />
+  <meta name="color-scheme" content="dark" />
+  <meta name="format-detection" content="telephone=no" />
+  <meta name="apple-mobile-web-app-title" content="Perimeter Notes" />
+  <title>Perimeter Notes</title>
+  <style>
+    :root {
+      --bg: #0b0d10;
+      --panel: #14181e;
+      --panel-2: #1c222b;
+      --panel-3: #252d38;
+      --line: #2e3846;
+      --text: #f3f6fa;
+      --muted: #a9b6c5;
+      --lime: #b6f34a;
+      --amber: #ffbf47;
+      --rose: #ff7a7a;
+      --blue: #6cb6ff;
+      --ink: #0b0d10;
+      --safe-t: env(safe-area-inset-top, 0px);
+      --safe-b: env(safe-area-inset-bottom, 0px);
+      --safe-l: env(safe-area-inset-left, 0px);
+      --safe-r: env(safe-area-inset-right, 0px);
+      --app-h: 100vh;
+    }
+    @supports (height: 100dvh) { :root { --app-h: 100dvh; } }
+    * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+    html, body {
+      margin: 0; padding: 0;
+      background: var(--bg); color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, sans-serif;
+      font-size: 16px; line-height: 1.4;
+      height: var(--app-h); overflow: hidden; overscroll-behavior: none;
+      -webkit-text-size-adjust: 100%;
+    }
+    button, input, textarea { font: inherit; color: inherit; }
+    button { cursor: pointer; }
+    [hidden] { display: none !important; }
+    .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+    .screen {
+      display: none; height: var(--app-h); flex-direction: column;
+      padding-left: var(--safe-l); padding-right: var(--safe-r);
+    }
+    .screen.on { display: flex; }
+
+    /* ---------- top bar ---------- */
+    .topbar {
+      padding: calc(10px + var(--safe-t)) 16px 10px;
+      display: flex; align-items: center; justify-content: space-between; gap: 10px;
+      min-height: calc(60px + var(--safe-t));
+    }
+    .brand { font-weight: 750; font-size: 18px; letter-spacing: -0.02em; display: flex; align-items: center; gap: 10px; min-width: 0; }
+    .brand small { display: block; color: var(--muted); font-weight: 500; font-size: 13px; margin-top: 1px; letter-spacing: 0; }
+    .brand .ttl { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .logo { width: 30px; height: 30px; border-radius: 9px; background: var(--lime); flex: none; position: relative; }
+    .logo::after { content: ""; position: absolute; inset: 7px; border: 2.5px solid var(--ink); border-radius: 50%; border-right-color: transparent; }
+    .rec-dot { width: 12px; height: 12px; border-radius: 50%; background: var(--rose); flex: none; animation: blink 1.6s infinite; }
+    @keyframes blink { 50% { opacity: .35; } }
+
+    .chip {
+      font-size: 13px; color: var(--muted); font-weight: 600;
+      background: var(--panel-2); border: 1px solid var(--line);
+      border-radius: 999px; padding: 7px 12px; white-space: nowrap; flex: none;
+      max-width: 60vw; overflow: hidden; text-overflow: ellipsis;
+    }
+    .chip.good { color: var(--ink); background: var(--lime); border-color: var(--lime); font-weight: 750; }
+    .chip.warn { color: var(--ink); background: var(--amber); border-color: var(--amber); font-weight: 750; }
+    .chip.bad { color: var(--ink); background: var(--rose); border-color: var(--rose); font-weight: 750; }
+    .chip.live::before {
+      content: ""; display: inline-block; width: 8px; height: 8px; border-radius: 50%;
+      background: var(--blue); margin-right: 7px; vertical-align: 1px;
+      box-shadow: 0 0 0 0 rgba(108,182,255,.8); animation: pulse 1.4s infinite;
+    }
+    @keyframes pulse { 70% { box-shadow: 0 0 0 8px rgba(108,182,255,0); } }
+
+    /* ---------- buttons ---------- */
+    .btn {
+      appearance: none; -webkit-appearance: none; border: 0; border-radius: 14px;
+      min-height: 50px; padding: 12px 16px; font-weight: 700; font-size: 16px; line-height: 1.2;
+      background: var(--lime); color: var(--ink);
+      display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+      text-decoration: none; text-align: center; touch-action: manipulation;
+      transition: transform .08s ease, filter .15s ease;
+    }
+    .btn:active { transform: scale(.98); filter: brightness(.9); }
+    .btn:focus-visible, .pin-item:focus-visible, input:focus-visible, textarea:focus-visible, summary:focus-visible {
+      outline: 3px solid var(--blue); outline-offset: 2px;
+    }
+    .btn.secondary { background: var(--panel-3); color: var(--text); border: 1px solid var(--line); }
+    .btn.ghost { background: transparent; color: var(--text); border: 1px solid var(--line); }
+    .btn.danger { background: #3a1818; color: #ffd6d6; border: 1px solid #63282a; }
+    .btn.small { min-height: 44px; padding: 8px 14px; font-size: 15px; }
+    .btn.wide { width: 100%; }
+    .btn.big { min-height: 56px; font-size: 17px; }
+    .btn:disabled { opacity: .5; }
+    .btn svg { width: 22px; height: 22px; flex: none; }
+    .btn.mic { width: 56px; padding: 0; flex: none; }
+    .btn.mic.on { background: var(--rose); color: var(--ink); border-color: var(--rose); animation: blink 1.2s infinite; }
+
+    /* ---------- home ---------- */
+    .home-body { flex: 1; overflow: auto; -webkit-overflow-scrolling: touch; padding: 4px 16px calc(28px + var(--safe-b)); }
+    .hero {
+      background: linear-gradient(180deg, #1b2418 0%, var(--panel) 100%);
+      border: 1px solid var(--line); border-radius: 20px; padding: 20px 18px 18px; margin-bottom: 18px;
+    }
+    .hero h1 { margin: 0 0 8px; font-size: 28px; line-height: 1.15; letter-spacing: -0.03em; }
+    .hero p { margin: 0 0 16px; color: var(--muted); line-height: 1.45; font-size: 15px; }
+    .stack { display: grid; gap: 10px; }
+    details.howto { margin-top: 14px; border-top: 1px solid var(--line); padding-top: 12px; }
+    details.howto summary { color: var(--text); font-weight: 650; font-size: 15px; min-height: 32px; cursor: pointer; }
+    details.howto ul { margin: 8px 0 0; padding-left: 20px; color: var(--muted); font-size: 14px; line-height: 1.45; }
+    details.howto li { margin-bottom: 6px; }
+
+    .section-head { display: flex; align-items: baseline; justify-content: space-between; margin: 6px 2px 10px; }
+    .section-label {
+      font-size: 13px; letter-spacing: .08em; text-transform: uppercase;
+      color: var(--muted); margin: 0; font-weight: 750;
+    }
+    .count { color: var(--muted); font-size: 13px; }
+    .walk-card {
+      background: var(--panel); border: 1px solid var(--line);
+      border-radius: 16px; padding: 14px; margin-bottom: 10px;
+    }
+    .walk-card h3 { margin: 0 0 4px; font-size: 17px; overflow-wrap: anywhere; }
+    .walk-card p { margin: 0; color: var(--muted); font-size: 14px; }
+    .badge { display: inline-block; font-size: 12px; font-weight: 750; border-radius: 6px; padding: 2px 7px; margin-left: 6px; vertical-align: 2px; }
+    .badge.amber { background: var(--amber); color: var(--ink); }
+    .badge.muted { background: var(--panel-3); color: var(--muted); }
+    .walk-actions { display: flex; gap: 8px; margin-top: 12px; }
+    .walk-actions .btn { flex: 1; }
+    .empty { color: var(--muted); font-size: 15px; padding: 6px 2px 20px; }
+    .alert {
+      border-radius: 16px; padding: 14px; margin-bottom: 12px; font-size: 15px;
+      background: #2a2310; border: 1px solid #5c4a17; color: #ffe2a6;
+    }
+    .alert.bad { background: #2a1414; border-color: #632828; color: #ffd0d0; }
+    .alert strong { display: block; margin-bottom: 4px; color: var(--text); }
+    .alert .grid-2 { margin-top: 10px; }
+    .card { background: var(--panel); border: 1px solid var(--line); border-radius: 16px; padding: 14px; }
+    .row { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 12px; font-weight: 600; }
+    .seg { display: inline-flex; background: var(--panel-2); border: 1px solid var(--line); border-radius: 12px; padding: 3px; }
+    .seg button { border: 0; background: transparent; border-radius: 9px; min-height: 40px; min-width: 76px; font-weight: 700; color: var(--muted); }
+    .seg button[aria-pressed="true"] { background: var(--panel-3); color: var(--text); box-shadow: 0 0 0 1px var(--line); }
+
+    /* ---------- map ---------- */
+    .map-wrap { position: relative; flex: 1; min-height: 180px; background: #07090c; overflow: hidden; }
+    canvas { width: 100%; height: 100%; display: block; touch-action: manipulation; }
+    .hud {
+      position: absolute; left: 10px; right: 10px; top: 10px;
+      display: flex; flex-wrap: wrap; gap: 6px; pointer-events: none;
+    }
+    .hud span {
+      background: rgba(11,13,16,.82); -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px);
+      border: 1px solid var(--line); border-radius: 999px;
+      padding: 6px 11px; font-size: 13px; color: var(--text); font-weight: 600;
+      font-variant-numeric: tabular-nums;
+    }
+    .hud span.mode { color: var(--ink); background: var(--amber); border-color: var(--amber); }
+    .legend {
+      position: absolute; left: 10px; bottom: 10px; pointer-events: none;
+      background: rgba(11,13,16,.82); border: 1px solid var(--line);
+      border-radius: 12px; padding: 6px 10px; font-size: 12px; color: var(--muted);
+      display: flex; gap: 10px; align-items: center;
+    }
+    .legend i { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 5px; vertical-align: -1px; }
+    .banner {
+      position: absolute; left: 10px; right: 10px; top: 52px;
+      background: rgba(20,24,30,.95); border: 1px solid var(--line);
+      border-radius: 14px; padding: 12px 44px 12px 14px; font-size: 14px; color: var(--muted);
+      box-shadow: 0 8px 24px rgba(0,0,0,.4);
+    }
+    .banner strong { color: var(--text); display: block; margin-bottom: 2px; font-size: 15px; }
+    .banner.warn { border-color: #6b561c; background: rgba(42,35,14,.96); color: #ffe2a6; }
+    .banner.bad { border-color: #6a2a2a; background: rgba(42,20,20,.96); color: #ffd0d0; }
+    .banner .btn { margin-top: 10px; }
+    .banner .x {
+      position: absolute; top: 4px; right: 4px; width: 40px; height: 40px; border: 0; background: transparent;
+      color: var(--muted); font-size: 22px; line-height: 1; border-radius: 10px;
+    }
+
+    /* ---------- walk dock ---------- */
+    .dock {
+      background: var(--panel); border-top: 1px solid var(--line);
+      padding: 10px 12px calc(10px + var(--safe-b));
+    }
+    .note-row { display: flex; gap: 8px; align-items: stretch; }
+    textarea {
+      flex: 1; width: 100%; min-height: 56px; max-height: 110px; resize: none;
+      background: var(--panel-2); border: 1px solid var(--line);
+      border-radius: 14px; padding: 12px 14px; outline: none; font-size: 16px; line-height: 1.35;
+    }
+    textarea::placeholder, input::placeholder { color: #7f8c9b; }
+    .dock-actions { display: grid; grid-template-columns: 1fr 1fr 1.5fr; gap: 8px; margin-top: 8px; }
+    .dock-hint { margin: 8px 2px 0; font-size: 13px; color: var(--muted); min-height: 18px; }
+    .dock-hint.warn { color: var(--amber); }
+
+    /* ---------- review ---------- */
+    .review-map { flex: 1 1 40%; min-height: 200px; }
+    .sheet {
+      background: var(--panel); border-top: 1px solid var(--line);
+      padding: 14px 16px calc(18px + var(--safe-b));
+      max-height: calc(var(--app-h) * 0.58); overflow: auto; -webkit-overflow-scrolling: touch;
+      flex: none;
+    }
+    .stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 14px; }
+    .stat { background: var(--panel-2); border: 1px solid var(--line); border-radius: 12px; padding: 8px 10px; min-width: 0; }
+    .stat b { display: block; font-size: 17px; font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .stat span { font-size: 12px; color: var(--muted); }
+    .stat.full { grid-column: 1 / -1; }
+    .field-label { display: block; font-size: 13px; color: var(--muted); margin-bottom: 6px; font-weight: 650; }
+    .label-row { display: flex; gap: 8px; margin-bottom: 16px; }
+    .label-row .btn { flex: none; min-width: 84px; }
+    input[type="text"] {
+      flex: 1; width: 100%; min-height: 50px; border-radius: 14px; min-width: 0;
+      background: var(--panel-2); border: 1px solid var(--line);
+      padding: 0 14px; outline: none; font-size: 16px;
+    }
+    .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+    .grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; }
+    .gap-top { margin-top: 8px; }
+    .pin-list { margin: 8px 0 12px; border: 1px solid var(--line); border-radius: 14px; overflow: hidden; }
+    .pin-item {
+      display: flex; gap: 12px; align-items: flex-start; width: 100%; text-align: left;
+      background: transparent; border: 0; border-bottom: 1px solid var(--line);
+      padding: 12px; min-height: 56px; font-weight: 600; font-size: 16px;
+    }
+    .pin-item:last-child { border-bottom: 0; }
+    .pin-item.on { background: #222c1a; }
+    .pin-num {
+      flex: none; width: 28px; height: 28px; border-radius: 50%; background: var(--amber); color: var(--ink);
+      font-size: 14px; font-weight: 800; display: inline-flex; align-items: center; justify-content: center;
+    }
+    .pin-item.on .pin-num { box-shadow: 0 0 0 3px var(--panel), 0 0 0 5px #fff; }
+    .pin-body { min-width: 0; flex: 1; overflow-wrap: anywhere; }
+    .pin-item small { color: var(--muted); display: block; margin-top: 3px; font-weight: 450; font-size: 13px; }
+    .mono { font-variant-numeric: tabular-nums; font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 13px; }
+
+    .validate {
+      display: none; background: var(--panel-2); border: 1px solid var(--line);
+      border-radius: 16px; padding: 14px; margin-bottom: 14px;
+    }
+    .validate.on { display: block; }
+    .validate h3 { margin: 0 0 4px; font-size: 17px; overflow-wrap: anywhere; }
+    .validate p { margin: 0 0 8px; color: var(--muted); }
+    .verdict {
+      border-radius: 12px; padding: 10px 12px; font-weight: 650; font-size: 15px;
+      margin: 8px 0 10px; background: var(--panel-3); color: var(--text);
+    }
+    .verdict small { display: block; font-weight: 450; font-size: 13px; color: inherit; opacity: .85; margin-top: 3px; }
+    .verdict.good { background: #1f2e10; color: var(--lime); }
+    .verdict.warn { background: #2e260e; color: var(--amber); }
+    .verdict.bad { background: #301616; color: #ffb8b8; }
+    .verdict.busy::before { content: ""; display: inline-block; width: 12px; height: 12px; border: 2px solid currentColor; border-right-color: transparent; border-radius: 50%; margin-right: 8px; vertical-align: -1px; animation: spin .8s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .toast {
+      position: fixed; left: 50%; top: calc(66px + var(--safe-t));
+      transform: translateX(-50%) translateY(-10px);
+      background: #f3f6fa; color: var(--ink); font-weight: 700;
+      border-radius: 14px; padding: 11px 16px; opacity: 0;
+      pointer-events: none; transition: opacity .2s ease, transform .2s ease; z-index: 50; font-size: 15px;
+      width: max-content; max-width: calc(100vw - 32px); text-align: center; box-shadow: 0 10px 30px rgba(0,0,0,.45);
+    }
+    .toast.on { opacity: 1; transform: translateX(-50%) translateY(0); }
+    .tiny { font-size: 13px; color: var(--muted); line-height: 1.45; margin: 10px 0 0; }
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after { animation: none !important; transition: none !important; }
+    }
+    @media (max-height: 640px) {
+      .review-map { min-height: 160px; }
+      .sheet { max-height: calc(var(--app-h) * 0.62); }
+    }
+  </style>
+</head>
+<body>
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+
+  <!-- ================= HOME ================= -->
+  <section id="home" class="screen on" aria-label="Home">
+    <header class="topbar">
+      <div class="brand"><span class="logo" aria-hidden="true"></span><div>Perimeter Notes<small>Walk · pin · label · validate</small></div></div>
+      <div id="gpsChip" class="chip">GPS idle</div>
+    </header>
+    <main class="home-body">
+      <div id="homeAlerts"></div>
+      <div id="resumeBox"></div>
+      <div class="hero">
+        <h1>Map a venue as you walk.</h1>
+        <p>Record a GPS trail, drop notes at highlights, save the walk on this iPhone, then reopen it to check each note against its coordinates.</p>
+        <div class="stack">
+          <button class="btn big wide" id="btnBegin">Begin walk</button>
+          <button class="btn secondary wide" id="btnDemo">Preview without GPS</button>
+        </div>
+        <details class="howto">
+          <summary>How accurate is this?</summary>
+          <ul>
+            <li>Outdoors with open sky, iPhone GPS is usually within about 5–10 m (15–30 ft).</li>
+            <li>Indoors it often drifts 20–50 m+ (65–165 ft). Treat interior pins as notes on a sketch, not measured rooms.</li>
+            <li>The live map shows a blue circle for your phone's reported accuracy. The trail skips very rough readings and impossible jumps, and smooths out small jitter.</li>
+            <li>Pins average your last few seconds of readings. Stand still for 3–5 seconds before pinning for the best result.</li>
+            <li>iPhone pauses location when the screen locks or Safari goes to the background. Keep the app open while you walk.</li>
+          </ul>
+        </details>
+      </div>
+      <div class="section-head"><h2 class="section-label">Saved walks</h2><span id="savedCount" class="count"></span></div>
+      <div id="savedList"></div>
+
+      <div class="section-head" style="margin-top:14px"><h2 class="section-label">Settings &amp; backup</h2></div>
+      <div class="card">
+        <div class="row"><span>Units</span>
+          <div class="seg" role="group" aria-label="Distance units">
+            <button type="button" data-units="ft" aria-pressed="false">Feet</button>
+            <button type="button" data-units="m" aria-pressed="false">Meters</button>
+          </div>
+        </div>
+        <div class="grid-2">
+          <button class="btn secondary" id="btnExport">Export backup</button>
+          <button class="btn secondary" id="btnImport">Import backup</button>
+        </div>
+        <input type="file" id="importFile" accept="application/json,.json" hidden />
+        <p class="tiny">Walks never leave this phone unless you send them. Safari can clear data for websites you haven't opened in a while, so add this page to your Home Screen and export a backup now and then.</p>
+      </div>
+    </main>
+  </section>
+
+  <!-- ================= WALK ================= -->
+  <section id="walk" class="screen" aria-label="Recording a walk">
+    <header class="topbar">
+      <div class="brand"><span class="rec-dot" aria-hidden="true"></span><div>Recording<small id="walkClock" class="mono" aria-label="Elapsed time">00:00</small></div></div>
+      <div id="accChip" class="chip live" role="status" aria-live="polite">Waiting for GPS…</div>
+    </header>
+    <div class="map-wrap">
+      <canvas id="canvasWalk" role="img" aria-label="Live map of your trail and pins"></canvas>
+      <div class="hud">
+        <span id="hudDist">0 ft</span>
+        <span id="hudPts">0 pts</span>
+        <span id="hudPins">0 pins</span>
+        <span id="hudMode" class="mode" hidden>preview</span>
+      </div>
+      <div id="walkBanner" class="banner" hidden role="status" aria-live="polite"></div>
+      <div class="legend" aria-hidden="true"><span><i style="background:#b6f34a"></i>trail</span><span><i style="background:#ffbf47"></i>notes</span><span><i style="background:#6cb6ff"></i>you ± accuracy</span></div>
+    </div>
+    <div class="dock">
+      <div class="note-row">
+        <label for="noteField" class="sr-only">Note text</label>
+        <textarea id="noteField" rows="2" placeholder="Dance floor, bar stools, TVs…" enterkeyhint="done" autocomplete="off"></textarea>
+        <button class="btn secondary mic" id="btnMic" aria-label="Dictate note" aria-pressed="false">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg>
+        </button>
+      </div>
+      <div class="dock-actions">
+        <button class="btn danger" id="btnStop">Finish</button>
+        <button class="btn secondary" id="btnDrop" aria-label="Drop a quick pin with no note">Quick pin</button>
+        <button class="btn" id="btnSaveNote">Pin note here</button>
+      </div>
+      <p id="keepOpen" class="dock-hint">Keep Safari open — iPhone pauses GPS when the screen locks.</p>
+    </div>
+  </section>
+
+  <!-- ================= REVIEW ================= -->
+  <section id="review" class="screen" aria-label="Review walk">
+    <header class="topbar">
+      <button class="btn ghost small" id="btnBackHome" aria-label="Back to home">‹ Home</button>
+      <div class="brand" style="flex:1;justify-content:center"><span id="reviewTitle" class="ttl">Walk</span></div>
+      <div id="reviewChip" class="chip">saved</div>
+    </header>
+    <div class="map-wrap review-map">
+      <canvas id="canvasReview" role="img" aria-label="Map of the saved walk. Tap a numbered pin to select it."></canvas>
+      <div class="legend" aria-hidden="true"><span><i style="background:#b6f34a"></i>trail</span><span><i style="background:#ffbf47"></i>notes</span><span>tap a pin</span></div>
+    </div>
+    <div class="sheet">
+      <div id="reviewStats" class="stats"></div>
+      <div id="resumeRow" hidden style="margin-bottom:14px">
+        <button class="btn secondary wide" id="btnResume">Resume this unfinished walk</button>
+      </div>
+      <label class="field-label" for="labelField">Label in persistent memory</label>
+      <div class="label-row">
+        <input id="labelField" type="text" maxlength="80" placeholder="e.g. Neighborhood bar · Sep 22" enterkeyhint="done" autocomplete="off" />
+        <button class="btn" id="btnSaveLabel">Save</button>
+      </div>
+
+      <h2 class="section-label">Highlights — tap to validate</h2>
+      <div class="pin-list" id="pinList"></div>
+
+      <div id="validate" class="validate" aria-label="Selected pin">
+        <h3 id="valTitle">Validate this note</h3>
+        <p id="valMeta" class="mono"></p>
+        <div id="valVerdict" class="verdict" role="status" aria-live="polite">Tap check to compare your live GPS to this pin.</div>
+        <button class="btn wide" id="btnCheck">Check my position against this pin</button>
+        <div class="grid-2 gap-top">
+          <button class="btn secondary" id="btnCopy">Copy coordinates</button>
+          <a class="btn secondary" id="lnkMaps" href="#" target="_blank" rel="noopener">Open in Maps</a>
+        </div>
+        <div class="grid-3 gap-top">
+          <button class="btn ghost small" id="btnUpdatePin">Move pin here</button>
+          <button class="btn ghost small" id="btnEditPin">Edit note</button>
+          <button class="btn danger small" id="btnDeletePin">Delete pin</button>
+        </div>
+      </div>
+
+      <div class="grid-2">
+        <button class="btn" id="btnShare">Send diagram</button>
+        <button class="btn secondary" id="btnMail">Mail draft</button>
+      </div>
+      <button class="btn danger wide gap-top" id="btnDelete">Delete walk</button>
+      <p class="tiny">Send diagram opens the iPhone share sheet (Messages or Mail) with a PNG map plus a full-screen HTML report. Mail draft can't attach the graphic — use Send diagram for that.</p>
+    </div>
+  </section>
+
+<script>
+(function () {
+  "use strict";
+
+  /* ===================== Config ===================== */
+  const STORE = "perimeter-notes.v1";          // unchanged so old walks load
+  const PREFS = "perimeter-notes.prefs";
+  const CFG = {
+    HARD_MAX_ACC: 100,     // m. Coarser readings (cell/Wi-Fi guesses) never touch the trail
+    TRAIL_MAX_ACC: 50,     // m. 50–100 m readings are used only if nothing better arrived recently
+    BETTER_WINDOW: 15000,  // ms
+    MAX_FIX_AGE: 10000,    // ms. Ignore cached positions older than this
+    MAX_SPEED: 6,          // m/s. Anything faster on foot is treated as a GPS jump
+    Q_WALK: 3,             // m/s. Kalman process noise (how fast we expect to move)
+    MIN_STEP: 3,           // m. Minimum spacing between stored trail points
+    HEARTBEAT: 30000,      // ms. Store a point at least this often even if standing still
+    PIN_WINDOW: 8000,      // ms. Readings averaged when you drop a pin
+    LOST_AFTER: 15000,     // ms without a fix → "signal lost"
+    GAP_AFTER_HIDDEN: 15000,
+    CHECKPOINT_MS: 4000,   // throttle localStorage writes while walking
+    SAMPLE_MS: 5000        // ms of readings averaged for Check / Move pin
+  };
+
+  const $ = (id) => document.getElementById(id);
+  const toastEl = $("toast");
+  let toastTimer = null;
+  let selectedPinId = null;
+  let lastLiveFix = null;
+
+  function toast(msg, ms) {
+    toastEl.textContent = msg;
+    toastEl.classList.add("on");
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => toastEl.classList.remove("on"), ms || 2600);
+  }
+  function uid() {
+    return "w_" + Math.random().toString(36).slice(2, 9) + Date.now().toString(36).slice(-4);
+  }
+
+  /* ===================== Storage (same key + shape as v1) ===================== */
+  let storageOK = true;
+  (function probe() {
+    try { const k = "__pn_probe"; localStorage.setItem(k, "1"); localStorage.removeItem(k); }
+    catch (_) { storageOK = false; }
+  })();
+
+  const num = (v) => {
+    if (typeof v === "number") return isFinite(v) ? v : null;
+    if (typeof v === "string" && v.trim() !== "" && isFinite(+v)) return +v;
+    return null;
+  };
+  const validLL = (lat, lng) => lat != null && lng != null && Math.abs(lat) <= 90 && Math.abs(lng) <= 180;
+
+  function normPoint(p, t0) {
+    if (!p || typeof p !== "object") return null;
+    const lat = num(p.lat), lng = num(p.lng);
+    if (!validLL(lat, lng)) return null;
+    const out = Object.assign({}, p, { lat, lng, acc: num(p.acc), t: num(p.t) != null ? num(p.t) : t0, heading: num(p.heading) });
+    if (!out.gap) delete out.gap;
+    return out;
+  }
+  function normPin(p, t0, seen) {
+    if (!p || typeof p !== "object") return null;
+    const lat = num(p.lat), lng = num(p.lng);
+    if (!validLL(lat, lng)) return null;
+    let id = typeof p.id === "string" && p.id ? p.id : uid();
+    if (seen.has(id)) id = uid();
+    seen.add(id);
+    return Object.assign({}, p, {
+      id, lat, lng, acc: num(p.acc),
+      t: num(p.t) != null ? num(p.t) : t0,
+      text: typeof p.text === "string" && p.text.trim() ? p.text : "(unlabeled pin)"
+    });
+  }
+  function normalizeSession(s) {
+    if (!s || typeof s !== "object") return null;
+    const firstT = Array.isArray(s.points) && s.points[0] ? num(s.points[0].t) : null;
+    const startedAt = num(s.startedAt) != null ? num(s.startedAt) : (firstT != null ? firstT : Date.now());
+    const seen = new Set();
+    return Object.assign({}, s, {
+      id: typeof s.id === "string" && s.id ? s.id : uid(),
+      label: typeof s.label === "string" ? s.label : "",
+      startedAt,
+      stoppedAt: num(s.stoppedAt),
+      demo: !!s.demo,
+      points: (Array.isArray(s.points) ? s.points : []).map((p) => normPoint(p, startedAt)).filter(Boolean),
+      pins: (Array.isArray(s.pins) ? s.pins : []).map((p) => normPin(p, startedAt, seen)).filter(Boolean)
+    });
+  }
+
+  function loadAll() {
+    let raw = null;
+    try { raw = localStorage.getItem(STORE); } catch (_) { return []; }
+    if (!raw) return [];
+    let data;
+    try { data = JSON.parse(raw); } catch (_) { quarantine(raw); return []; }
+    if (!Array.isArray(data)) {
+      if (data && Array.isArray(data.sessions)) data = data.sessions;
+      else if (data && typeof data === "object" && data.id) data = [data];
+      else { quarantine(raw); return []; }
+    }
+    const ids = new Set();
+    return data.map(normalizeSession).filter((s) => {
+      if (!s || ids.has(s.id)) return false;
+      ids.add(s.id); return true;
+    });
+  }
+  // v1 silently replaced unreadable data with [] and then overwrote it on the next save.
+  function quarantine(raw) {
+    try {
+      localStorage.setItem(STORE + ".unreadable-" + Date.now(), raw);
+      localStorage.removeItem(STORE);
+      toast("Saved data was unreadable — kept a copy and started fresh", 4000);
+    } catch (_) {}
+  }
+  let lastSaveFailed = false;
+  function saveAll(list) {
+    try {
+      localStorage.setItem(STORE, JSON.stringify(list));
+      lastSaveFailed = false;
+      return true;
+    } catch (err) {
+      if (!lastSaveFailed) toast(storageOK ? "Storage full — export a backup and delete an old walk" : "This browser isn't saving data (Private Browsing?)", 4000);
+      lastSaveFailed = true;
+      return false;
+    }
+  }
+  // Replace in place (v1 moved the walk to the top of the list on every edit).
+  function upsert(session) {
+    const list = loadAll();
+    const i = list.findIndex((s) => s.id === session.id);
+    if (i >= 0) list[i] = session; else list.unshift(session);
+    return saveAll(list);
+  }
+  function remove(id) { return saveAll(loadAll().filter((s) => s.id !== id)); }
+
+  const prefs = (function () {
+    let p = {};
+    try { p = JSON.parse(localStorage.getItem(PREFS) || "{}") || {}; } catch (_) {}
+    if (p.units !== "ft" && p.units !== "m") p.units = /^en-(US|LR|MM)$/i.test(navigator.language || "") ? "ft" : "m";
+    return p;
+  })();
+  function savePrefs() { try { localStorage.setItem(PREFS, JSON.stringify(prefs)); } catch (_) {} }
+
+  /* ===================== Formatting + geo math ===================== */
+  function fmtTime(ts) {
+    return new Date(ts).toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
+  }
+  function fmtClock(ms) {
+    const s = Math.max(0, Math.floor(ms / 1000));
+    const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60);
+    const mm = String(m).padStart(2, "0") + ":" + String(s % 60).padStart(2, "0");
+    return h ? h + ":" + mm : mm;
+  }
+  function fmtDuration(ms) {
+    const min = Math.round(Math.max(0, ms) / 60000);
+    if (min < 1) return "<1 min";
+    if (min < 60) return min + " min";
+    return Math.floor(min / 60) + " h " + String(min % 60).padStart(2, "0") + " m";
+  }
+  function fmtCoord(n) { return Number(n).toFixed(6); }
+  function fmtDist(m) {
+    if (m == null || !isFinite(m)) return "—";
+    if (prefs.units === "ft") {
+      const ft = m * 3.28084;
+      if (ft >= 2640) return (ft / 5280).toFixed(2) + " mi";
+      return Math.round(ft).toLocaleString() + " ft";
+    }
+    if (m >= 1000) return (m / 1000).toFixed(2) + " km";
+    return Math.round(m).toLocaleString() + " m";
+  }
+  function fmtAcc(m) { return m == null || !isFinite(m) ? "± ?" : "±" + fmtDist(m); }
+  function fmtArea(m2) {
+    if (prefs.units === "ft") {
+      const ft2 = m2 * 10.7639;
+      if (ft2 >= 21780) return (ft2 / 43560).toFixed(2) + " acres";
+      return Math.round(ft2).toLocaleString() + " ft²";
+    }
+    if (m2 >= 10000) return (m2 / 10000).toFixed(2) + " ha";
+    return Math.round(m2).toLocaleString() + " m²";
+  }
+  function haversine(a, b) {
+    const R = 6371008.8, toRad = Math.PI / 180;
+    const dLat = (b.lat - a.lat) * toRad, dLng = (b.lng - a.lng) * toRad;
+    const la1 = a.lat * toRad, la2 = b.lat * toRad;
+    const h = Math.sin(dLat / 2) ** 2 + Math.cos(la1) * Math.cos(la2) * Math.sin(dLng / 2) ** 2;
+    return 2 * R * Math.asin(Math.min(1, Math.sqrt(h)));
+  }
+  function bearing(a, b) {
+    const toRad = Math.PI / 180;
+    const y = Math.sin((b.lng - a.lng) * toRad) * Math.cos(b.lat * toRad);
+    const x = Math.cos(a.lat * toRad) * Math.sin(b.lat * toRad) - Math.sin(a.lat * toRad) * Math.cos(b.lat * toRad) * Math.cos((b.lng - a.lng) * toRad);
+    return (Math.atan2(y, x) / toRad + 360) % 360;
+  }
+  function compass(deg) { return ["N", "NE", "E", "SE", "S", "SW", "W", "NW"][Math.round(deg / 45) % 8]; }
+  // Local projection, metres per degree at this latitude (fine for venue-sized areas).
+  function mPerDeg(lat) {
+    const r = lat * Math.PI / 180;
+    return { lat: 111132.92 - 559.82 * Math.cos(2 * r) + 1.175 * Math.cos(4 * r), lng: 111412.84 * Math.cos(r) - 93.5 * Math.cos(3 * r) };
+  }
+  function toXY(origin, p) {
+    const k = mPerDeg(origin.lat);
+    return { x: (p.lng - origin.lng) * k.lng, y: (p.lat - origin.lat) * k.lat };
+  }
+  function fromXY(origin, x, y) {
+    const k = mPerDeg(origin.lat);
+    return { lat: origin.lat + y / k.lat, lng: origin.lng + x / k.lng };
+  }
+  function escapeHtml(str) {
+    return String(str == null ? "" : str).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "\"": "&quot;", "'": "&#39;" }[c]));
+  }
+  function mapsUrl(p) {
+    return "https://maps.apple.com/?ll=" + fmtCoord(p.lat) + "," + fmtCoord(p.lng) + "&q=" + encodeURIComponent(p.text || "Pin");
+  }
+  function lastActivity(s) {
+    let t = s.startedAt;
+    if (s.points.length) t = Math.max(t, s.points[s.points.length - 1].t || 0);
+    s.pins.forEach((p) => { t = Math.max(t, p.t || 0); });
+    return t;
+  }
+  function pathStats(s) {
+    let dist = 0;
+    const pts = s.points;
+    for (let i = 1; i < pts.length; i++) if (!pts[i].gap) dist += haversine(pts[i - 1], pts[i]);
+    const end = s.stoppedAt || lastActivity(s);
+    let area = null;
+    if (pts.length >= 4 && dist > 20 && haversine(pts[0], pts[pts.length - 1]) <= Math.max(30, dist * 0.15)) {
+      const o = pts[0], xy = pts.map((p) => toXY(o, p));
+      let a = 0;
+      for (let i = 0; i < xy.length; i++) { const j = (i + 1) % xy.length; a += xy[i].x * xy[j].y - xy[j].x * xy[i].y; }
+      area = Math.abs(a) / 2;
+    }
+    return { dist, duration: end - s.startedAt, area };
+  }
+
+  /* ===================== Screens + viewport (iOS keyboard / dvh) ===================== */
+  const screens = { home: $("home"), walk: $("walk"), review: $("review") };
+  function current() { return Object.keys(screens).find((k) => screens[k].classList.contains("on")); }
+  function show(name) {
+    Object.values(screens).forEach((el) => el.classList.remove("on"));
+    screens[name].classList.add("on");
+    requestAnimationFrame(redraw);
+  }
+  function fitViewport() {
+    const vv = window.visualViewport;
+    const h = vv ? vv.height : window.innerHeight;
+    if (h > 0) document.documentElement.style.setProperty("--app-h", Math.round(h) + "px");
+    if (vv && vv.offsetTop > 0 && document.activeElement && /TEXTAREA|INPUT/.test(document.activeElement.tagName)) window.scrollTo(0, 0);
+  }
+  let redrawQueued = false;
+  function queueRedraw() {
+    if (redrawQueued) return;
+    redrawQueued = true;
+    requestAnimationFrame(() => { redrawQueued = false; redraw(); });
+  }
+  function redraw() {
+    const c = current();
+    if (c === "walk") drawWalk();
+    if (c === "review") drawReview();
+  }
+
+  /* ===================== Wake lock ===================== */
+  let wakeLock = null;
+  function setKeepOpenHint(needed) {
+    const el = $("keepOpen");
+    el.classList.toggle("warn", !!needed);
+    el.textContent = needed
+      ? "Screen may sleep — keep Safari open and the screen on, or GPS pauses."
+      : "Screen stays on while recording. Don't switch apps — iPhone pauses GPS in the background.";
+  }
+  async function requestWake() {
+    if (!state.session) return;
+    if (!("wakeLock" in navigator)) { setKeepOpenHint(true); return; }
+    if (wakeLock && !wakeLock.released) return;
+    try {
+      const lock = await navigator.wakeLock.request("screen");
+      if (!state.session) { lock.release().catch(() => {}); return; }
+      wakeLock = lock;
+      lock.addEventListener("release", () => {
+        if (wakeLock === lock) wakeLock = null;
+        if (state.session) setKeepOpenHint(true);
+      });
+      setKeepOpenHint(false);
+    } catch (_) { setKeepOpenHint(true); }
+  }
+  function releaseWake() {
+    const lock = wakeLock;
+    wakeLock = null;
+    if (lock) { try { lock.release().catch(() => {}); } catch (_) {} }
+  }
+
+  /* ===================== Location engine: filter → outliers → Kalman ===================== */
+  const state = {
+    session: null, demo: false, review: null,
+    startedMs: 0, clockBase: 0, clockTimer: null, demoTimer: null,
+    dist: 0, lastCheckpoint: 0, cpTimer: null, hiddenAt: 0
+  };
+  const geo = {
+    watchId: null, token: 0,
+    status: "idle",           // idle | waiting | ok | denied | unavailable | insecure | error
+    startedAt: 0, lastFixAt: 0, lastRaw: null,
+    recent: [], kf: null, rejectRun: [], gapPending: false,
+    rejected: 0, ignored: 0, bannerDismissed: null
+  };
+
+  function resetGeo() {
+    stopGeo();
+    Object.assign(geo, {
+      status: "idle", startedAt: Date.now(), lastFixAt: 0, lastRaw: null,
+      recent: [], kf: null, rejectRun: [], gapPending: false, rejected: 0, ignored: 0, bannerDismissed: null
+    });
+  }
+  function stopGeo() {
+    geo.token++;
+    if (geo.watchId != null && navigator.geolocation) navigator.geolocation.clearWatch(geo.watchId);
+    geo.watchId = null;
+  }
+  function startGeo() {
+    stopGeo();
+    geo.startedAt = Date.now();
+    if (!("geolocation" in navigator)) { setGeoStatus("unavailable"); return; }
+    setGeoStatus(window.isSecureContext === false ? "insecure" : "waiting");
+    const token = geo.token;
+    try {
+      geo.watchId = navigator.geolocation.watchPosition(
+        (pos) => { if (token === geo.token) onPosition(pos); },
+        (err) => { if (token === geo.token) onGeoError(err); },
+        { enableHighAccuracy: true, maximumAge: 0, timeout: 27000 }
+      );
+    } catch (_) { setGeoStatus("unavailable"); }
+  }
+
+  function fixFromPos(pos) {
+    const c = pos && pos.coords;
+    if (!c) return null;
+    const lat = num(c.latitude), lng = num(c.longitude);
+    if (!validLL(lat, lng)) return null;
+    const now = Date.now();
+    const ts = num(pos.timestamp);
+    if (ts && now - ts > CFG.MAX_FIX_AGE && now - ts < 864e5) return null;  // cached / stale reading
+    return { lat, lng, acc: num(c.accuracy) != null ? Math.max(1, c.accuracy) : 99, t: now, heading: num(c.heading), speed: num(c.speed) };
+  }
+  function onPosition(pos) { const fix = fixFromPos(pos); if (fix) onFix(fix); }
+  function onGeoError(err) {
+    const code = err && err.code;
+    if (code === 1) { stopGeo(); setGeoStatus("denied"); return; }
+    // 2 = unavailable, 3 = timeout: the watch keeps running; just reflect it quietly.
+    if (!geo.lastFixAt) setGeoStatus(code === 2 ? "error" : "waiting");
+    renderGeoUi();
+  }
+
+  function kfUpdate(kf, fix, q) {
+    const acc = Math.max(1, fix.acc);
+    if (!kf) return { lat: fix.lat, lng: fix.lng, variance: acc * acc, t: fix.t };
+    const dt = Math.max(0, (fix.t - kf.t) / 1000);
+    const variance = kf.variance + dt * q * q;
+    const K = variance / (variance + acc * acc);
+    return { lat: kf.lat + K * (fix.lat - kf.lat), lng: kf.lng + K * (fix.lng - kf.lng), variance: (1 - K) * variance, t: fix.t };
+  }
+  function isOutlier(fix) {
+    const kf = geo.kf;
+    if (!kf) return false;
+    const d = haversine(kf, fix);
+    const dt = Math.max(1, (fix.t - kf.t) / 1000);
+    return d > CFG.MAX_SPEED * dt + fix.acc + Math.sqrt(kf.variance) + 5;
+  }
+  function mutuallyConsistent(list) {
+    for (let i = 0; i < list.length; i++)
+      for (let j = i + 1; j < list.length; j++)
+        if (haversine(list[i], list[j]) > Math.max(15, list[i].acc + list[j].acc)) return false;
+    return true;
+  }
+
+  function onFix(fix) {
+    geo.lastRaw = fix;
+    geo.lastFixAt = fix.t;
+    lastLiveFix = fix;
+    if (geo.status !== "ok") setGeoStatus("ok");
+    const s = state.session;
+    if (!s) { renderGeoUi(); return; }
+
+    let use = true;
+    if (fix.acc > CFG.HARD_MAX_ACC) use = false;
+    else if (fix.acc > CFG.TRAIL_MAX_ACC && geo.recent.some((f) => fix.t - f.t < CFG.BETTER_WINDOW && f.acc <= CFG.TRAIL_MAX_ACC)) use = false;
+    if (!use) { geo.ignored++; renderGeoUi(); queueRedraw(); return; }
+
+    if (isOutlier(fix)) {
+      geo.rejectRun.push(fix);
+      const run = geo.rejectRun.slice(-3);
+      if (run.length >= 3 && mutuallyConsistent(run)) {
+        // Three agreeing readings far from the filter: the filter is what's wrong
+        // (e.g. signal dropped and you kept walking). Re-anchor instead of staying stuck.
+        geo.kf = null;
+        geo.recent = run.slice(0, -1);
+        geo.gapPending = true;
+        geo.rejectRun = [];
+      } else {
+        geo.rejected++;
+        renderGeoUi(); queueRedraw();
+        return;
+      }
+    } else {
+      geo.rejectRun = [];
+    }
+
+    geo.recent.push(fix);
+    const cutoff = fix.t - 30000;
+    while (geo.recent.length && geo.recent[0].t < cutoff) geo.recent.shift();
+    geo.kf = kfUpdate(geo.kf, fix, fix.q || CFG.Q_WALK);
+    maybeAddPoint(fix);
+    renderGeoUi();
+    queueRedraw();
+  }
+
+  function maybeAddPoint(fix) {
+    const s = state.session, kf = geo.kf;
+    if (!s || !kf) return;
+    const last = s.points[s.points.length - 1];
+    const step = Math.max(CFG.MIN_STEP, Math.min(fix.acc, 30) * 0.5);
+    const moved = last ? haversine(last, kf) : Infinity;
+    if (last && !geo.gapPending && moved < step && kf.t - last.t < CFG.HEARTBEAT) return;
+    const pt = { lat: +kf.lat.toFixed(7), lng: +kf.lng.toFixed(7), acc: Math.round(fix.acc * 10) / 10, t: kf.t, heading: fix.heading == null ? null : Math.round(fix.heading) };
+    if (last && geo.gapPending) pt.gap = true;
+    else if (last) state.dist += moved;
+    geo.gapPending = false;
+    s.points.push(pt);
+    updateWalkHud();
+    checkpoint();
+  }
+
+  // Inverse-variance average with outlier trimming. Reported accuracy is the best single
+  // reading, not a shrunken figure: GPS errors are correlated, so averaging helps less than math says.
+  function averageFixes(fixes) {
+    if (!fixes.length) return null;
+    const o = fixes[0];
+    const mean = (list) => {
+      let sw = 0, sx = 0, sy = 0;
+      list.forEach((f) => { const w = 1 / (f.acc * f.acc), xy = toXY(o, f); sw += w; sx += w * xy.x; sy += w * xy.y; });
+      return { x: sx / sw, y: sy / sw };
+    };
+    let m = mean(fixes);
+    let kept = fixes.filter((f) => { const xy = toXY(o, f); return Math.hypot(xy.x - m.x, xy.y - m.y) <= 2 * f.acc + 10; });
+    if (!kept.length) kept = fixes;
+    m = mean(kept);
+    const ll = fromXY(o, m.x, m.y);
+    let spread = 0;
+    kept.forEach((f) => { const xy = toXY(o, f); spread = Math.max(spread, Math.hypot(xy.x - m.x, xy.y - m.y)); });
+    return { lat: ll.lat, lng: ll.lng, acc: Math.min.apply(null, kept.map((f) => f.acc)), n: kept.length, spread };
+  }
+  // Pin position: average of the last few seconds if you were standing still,
+  // otherwise the smoothed current position.
+  function bestPinFix() {
+    const now = Date.now();
+    const win = geo.recent.filter((f) => now - f.t <= CFG.PIN_WINDOW);
+    if (win.length >= 2) {
+      const avg = averageFixes(win);
+      if (avg && avg.spread <= Math.max(8, avg.acc * 1.5)) return avg;
+    }
+    if (geo.kf) {
+      const lastAcc = win.length ? win[win.length - 1].acc : (geo.lastRaw ? geo.lastRaw.acc : null);
+      return { lat: geo.kf.lat, lng: geo.kf.lng, acc: lastAcc, n: 1, age: now - geo.kf.t };
+    }
+    if (geo.lastRaw) return Object.assign({}, geo.lastRaw, { n: 1, rough: true, age: now - geo.lastRaw.t });
+    return null;
+  }
+
+  // One-off averaged reading (review screen, no walk running).
+  let sampling = null;
+  function sampleFix(ms, onProgress) {
+    if (sampling) sampling.cancel();
+    return new Promise((resolve, reject) => {
+      if (!("geolocation" in navigator)) { reject({ code: "nogeo" }); return; }
+      const fixes = [];
+      let done = false, id = null, softTimer = null, hardTimer = null;
+      const finish = (err) => {
+        if (done) return;
+        done = true;
+        if (sampling === me) sampling = null;
+        clearTimeout(softTimer); clearTimeout(hardTimer);
+        if (id != null) navigator.geolocation.clearWatch(id);
+        if (err) { reject(err); return; }
+        const good = fixes.filter((f) => f.acc <= CFG.HARD_MAX_ACC);
+        const use = good.length ? good : fixes;
+        if (!use.length) { reject({ code: 3 }); return; }
+        resolve(averageFixes(use));
+      };
+      const me = { cancel: () => finish({ code: "cancel" }) };
+      sampling = me;
+      hardTimer = setTimeout(() => finish(), ms + 20000);
+      try {
+        id = navigator.geolocation.watchPosition((pos) => {
+          const f = fixFromPos(pos);
+          if (!f || done) return;
+          fixes.push(f);
+          lastLiveFix = f;
+          if (onProgress) onProgress(fixes.length, f);
+          if (!softTimer) softTimer = setTimeout(() => finish(), ms);
+          if (fixes.filter((x) => x.acc <= 8).length >= 4) finish();
+        }, (err) => { if (err && err.code === 1) finish(err); },
+        { enableHighAccuracy: true, maximumAge: 0, timeout: ms + 20000 });
+      } catch (e) { finish({ code: 2 }); }
+    });
+  }
+
+  /* ===================== GPS status UI ===================== */
+  function accTier(acc) {
+    if (acc <= 10) return { cls: "good", word: "Good" };
+    if (acc <= 25) return { cls: "warn", word: "Fair" };
+    if (acc <= 50) return { cls: "warn", word: "Rough" };
+    return { cls: "bad", word: "Weak" };
+  }
+  function setGeoStatus(st) { geo.status = st; renderGeoUi(); }
+  function renderGeoUi() {
+    if (!state.session) return;
+    const chip = $("accChip");
+    const now = Date.now();
+    const lost = !!(geo.lastFixAt && now - geo.lastFixAt > CFG.LOST_AFTER);
+    let cls = "chip", text;
+    switch (geo.status) {
+      case "denied": cls += " bad"; text = "Location blocked"; break;
+      case "unavailable": cls += " bad"; text = "No GPS"; break;
+      case "insecure": cls += " bad"; text = "Needs https"; break;
+      case "error": cls += " warn"; text = "No position yet"; break;
+      case "ok":
+        if (lost) { cls += " warn"; text = "No fix · " + Math.round((now - geo.lastFixAt) / 1000) + " s"; }
+        else { const t = accTier(geo.lastRaw.acc); cls += " " + t.cls; text = (state.demo ? "Preview · " : "") + fmtAcc(geo.lastRaw.acc) + " · " + t.word; }
+        break;
+      default: cls += " live"; text = state.demo ? "Starting preview…" : "Waiting for GPS…";
+    }
+    if (chip.className !== cls) chip.className = cls;
+    if (chip.textContent !== text) chip.textContent = text;
+    renderWalkBanner(lost);
+    if (lastSaveFailed) {
+      const el = $("keepOpen");
+      el.classList.add("warn");
+      el.textContent = "Couldn't save to this iPhone — storage is full or blocked.";
+    }
+  }
+  function renderWalkBanner(lost) {
+    const el = $("walkBanner");
+    let key = null, cls = "banner", html = "";
+    const waited = Date.now() - geo.startedAt;
+    if (state.demo) key = null;
+    else if (geo.status === "denied") {
+      key = "denied"; cls += " bad";
+      html = "<strong>Location is blocked</strong>Allow it in Settings → Privacy &amp; Security → Location Services → Safari Websites → <b>While Using</b>, and in Safari's <b>aA</b> menu → Website Settings → Location. Then tap Retry." +
+        '<br><button class="btn small secondary" data-act="retry">Retry</button>';
+    } else if (geo.status === "insecure") {
+      key = "insecure"; cls += " bad";
+      html = "<strong>This page isn't on https://</strong>iPhone only shares location with secure pages. Open the app from an https:// address, not a file.";
+    } else if (geo.status === "unavailable") {
+      key = "unavailable"; cls += " bad";
+      html = "<strong>Location isn't available</strong>This browser doesn't offer GPS. You can still type notes, but pins need a location.";
+    } else if ((geo.status === "waiting" || geo.status === "error") && waited > 3000) {
+      key = "waiting";
+      html = "<strong>Finding your location…</strong>The first fix can take 10–30 seconds. Outdoors or near a window helps.";
+    } else if (geo.status === "ok" && lost) {
+      key = "lost"; cls += " warn";
+      html = "<strong>GPS signal lost</strong>The trail is paused and will pick up again on its own.";
+    } else if (geo.status === "ok" && geo.lastRaw && geo.lastRaw.acc > CFG.TRAIL_MAX_ACC) {
+      key = "weak"; cls += " warn";
+      html = "<strong>Weak signal (" + escapeHtml(fmtAcc(geo.lastRaw.acc)) + ")</strong>Common indoors. Very rough readings stay off the trail, and pins here will be approximate.";
+    }
+    if (key && key === geo.bannerDismissed) key = null;
+    if (!key) { if (!el.hidden) el.hidden = true; el.dataset.key = ""; return; }
+    if (el.dataset.key !== key) {
+      el.innerHTML = html + '<button class="x" data-act="dismiss" aria-label="Dismiss">×</button>';
+      el.dataset.key = key;
+    }
+    el.className = cls;
+    el.hidden = false;
+  }
+  $("walkBanner").addEventListener("click", (e) => {
+    const act = e.target && e.target.getAttribute && e.target.getAttribute("data-act");
+    if (act === "dismiss") { geo.bannerDismissed = $("walkBanner").dataset.key; renderGeoUi(); }
+    if (act === "retry") { geo.bannerDismissed = null; startGeo(); }
+  });
+
+  /* ===================== Home ===================== */
+  function renderHome() {
+    const list = loadAll();
+    renderHomeAlerts();
+    renderResume(list);
+    renderUnits();
+    const box = $("savedList");
+    $("savedCount").textContent = list.length ? list.length + (list.length === 1 ? " walk" : " walks") : "";
+    if (!list.length) {
+      box.innerHTML = '<div class="empty">Nothing saved yet. Begin a walk, drop a few notes, then give it a label.</div>';
+      return;
+    }
+    box.innerHTML = list.map((s) => {
+      const st = pathStats(s);
+      const unfinished = !s.stoppedAt;
+      const when = unfinished ? "Started " + fmtTime(s.startedAt) : "Completed " + fmtTime(s.stoppedAt);
+      return `
+      <article class="walk-card" data-id="${escapeHtml(s.id)}">
+        <h3>${escapeHtml(s.label || "Untitled walk")}${unfinished ? '<span class="badge amber">unfinished</span>' : ""}${s.demo ? '<span class="badge muted">preview</span>' : ""}</h3>
+        <p>${escapeHtml(when)}</p>
+        <p>${escapeHtml(fmtDuration(st.duration))} · ${escapeHtml(fmtDist(st.dist))} · ${s.pins.length} ${s.pins.length === 1 ? "note" : "notes"}</p>
+        <div class="walk-actions">
+          <button class="btn secondary small open">Open</button>
+          <button class="btn secondary small share">Send</button>
+        </div>
+      </article>`;
+    }).join("");
+  }
+  $("savedList").addEventListener("click", (e) => {
+    const card = e.target.closest("[data-id]");
+    if (!card) return;
+    const id = card.dataset.id;
+    if (e.target.closest(".share")) {
+      const s = loadAll().find((x) => x.id === id);
+      if (s) shareSession(s);
+    } else if (e.target.closest(".open")) openReview(id);
+  });
+
+  let geoPermission = null;
+  function renderHomeAlerts() {
+    const out = [];
+    if (location.protocol === "file:" || window.isSecureContext === false) {
+      out.push('<div class="alert bad"><strong>Open this from an https:// address</strong>iPhone blocks location and the microphone for files and non-secure pages, so walks can\'t be recorded from here. Preview still works.</div>');
+    }
+    if (!storageOK) {
+      out.push('<div class="alert bad"><strong>Saving is turned off</strong>Safari isn\'t letting this page store data (Private Browsing?). Walks will be lost when you close the tab.</div>');
+    }
+    if (geoPermission === "denied") {
+      out.push('<div class="alert"><strong>Location is blocked for this site</strong>Settings → Privacy &amp; Security → Location Services → Safari Websites → While Using, and Safari\'s aA menu → Website Settings → Location → Allow.</div>');
+    }
+    $("homeAlerts").innerHTML = out.join("");
+    const chip = $("gpsChip");
+    if (geoPermission === "granted") { chip.className = "chip"; chip.textContent = "GPS ready"; }
+    else if (geoPermission === "denied") { chip.className = "chip bad"; chip.textContent = "GPS blocked"; }
+    else { chip.className = "chip"; chip.textContent = "GPS idle"; }
+  }
+  function watchPermission() {
+    try {
+      if (!navigator.permissions || !navigator.permissions.query) return;
+      navigator.permissions.query({ name: "geolocation" }).then((p) => {
+        geoPermission = p.state;
+        if (current() === "home") renderHomeAlerts();
+        p.onchange = () => { geoPermission = p.state; if (current() === "home") renderHomeAlerts(); };
+      }).catch(() => {});
+    } catch (_) {}
+  }
+
+  function renderResume(list) {
+    const box = $("resumeBox");
+    const s = list.find((x) => !x.stoppedAt && !x.demo && (x.points.length || x.pins.length));
+    if (!s) { box.innerHTML = ""; return; }
+    box.innerHTML = `<div class="alert" data-id="${escapeHtml(s.id)}">
+      <strong>Unfinished walk · ${escapeHtml(fmtTime(s.startedAt))}</strong>
+      Safari closed before you tapped Finish. ${s.points.length} ${s.points.length === 1 ? "point" : "points"} and ${s.pins.length} ${s.pins.length === 1 ? "note" : "notes"} were saved.
+      <div class="grid-2"><button class="btn small" data-act="resume">Resume</button><button class="btn small secondary" data-act="finish">Finish &amp; save</button></div>
+    </div>`;
+  }
+  $("resumeBox").addEventListener("click", (e) => {
+    const act = e.target.getAttribute("data-act");
+    const card = e.target.closest("[data-id]");
+    if (!act || !card) return;
+    const s = loadAll().find((x) => x.id === card.dataset.id);
+    if (!s) { renderHome(); return; }
+    if (act === "resume") startWalk(false, s);
+    if (act === "finish") finishStored(s);
+  });
+  function finishStored(s) {
+    s.stoppedAt = lastActivity(s);
+    if (!s.label) s.label = defaultLabel(s);
+    upsert(s);
+    openReview(s.id);
+  }
+
+  function renderUnits() {
+    document.querySelectorAll("[data-units]").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.units === prefs.units)));
+  }
+  document.querySelectorAll("[data-units]").forEach((b) => {
+    b.addEventListener("click", () => { prefs.units = b.dataset.units; savePrefs(); renderHome(); });
+  });
+
+  /* ===================== Walk ===================== */
+  function newSession(demo) {
+    return { id: uid(), label: "", startedAt: Date.now(), stoppedAt: null, demo: !!demo, points: [], pins: [] };
+  }
+
+  function startWalk(demo, resume) {
+    if (state.session) { show("walk"); return; }
+    teardownWalk();
+    resetGeo();
+    if (sampling) sampling.cancel();
+    state.review = null;           // v1 kept re-saving the last-opened walk on every GPS point
+    selectedPinId = null;
+    pendingShare = null;
+    const s = resume || newSession(demo);
+    if (resume) { s.stoppedAt = null; geo.gapPending = true; }
+    state.session = s;
+    state.demo = !!s.demo;
+    state.dist = pathStats(s).dist;
+    state.clockBase = resume ? Math.max(0, lastActivity(s) - s.startedAt) : 0;
+    state.startedMs = Date.now();
+    $("noteField").value = "";
+    $("hudMode").hidden = !state.demo;
+    $("walkClock").textContent = fmtClock(state.clockBase);
+    $("walkBanner").hidden = true;
+    setKeepOpenHint(false);
+    updateWalkHud();
+    state.clockTimer = setInterval(tick, 500);
+    show("walk");
+    requestWake();
+    checkpoint(true);
+    if (state.demo) {
+      setGeoStatus("waiting");
+      runDemo();
+      toast("Preview walk — try Quick pin or Pin note here");
+    } else {
+      startGeo();
+      if (resume) toast("Resumed — there may be a gap in the trail");
+    }
+  }
+  function tick() {
+    if (!state.session) return;
+    $("walkClock").textContent = fmtClock(state.clockBase + Date.now() - state.startedMs);
+    renderGeoUi();
+  }
+  function updateWalkHud() {
+    const s = state.session;
+    if (!s) return;
+    $("hudDist").textContent = fmtDist(state.dist);
+    $("hudPts").textContent = s.points.length + (s.points.length === 1 ? " pt" : " pts");
+    $("hudPins").textContent = s.pins.length + (s.pins.length === 1 ? " pin" : " pins");
+  }
+
+  function checkpoint(force) {
+    if (!state.session) return;
+    const now = Date.now();
+    if (force || now - state.lastCheckpoint >= CFG.CHECKPOINT_MS) {
+      clearTimeout(state.cpTimer); state.cpTimer = null;
+      state.lastCheckpoint = now;
+      upsert(state.session);
+    } else if (!state.cpTimer) {
+      state.cpTimer = setTimeout(() => { state.cpTimer = null; checkpoint(true); }, CFG.CHECKPOINT_MS - (now - state.lastCheckpoint));
+    }
+  }
+
+  // Demo: synthetic loop with GPS-like noise and one bogus jump, fed through the real filter.
+  function runDemo() {
+    const origin = { lat: 38.6436, lng: -121.1887 };
+    const notesAt = { 10: "Entrance", 25: "Dance floor", 42: "Bar stools", 58: "Sports TVs" };
+    let seed = 7;
+    const rnd = () => { seed = (seed * 16807) % 2147483647; return seed / 2147483647 - 0.5; };
+    const path = [];
+    for (let a = 0, i = 0; a <= 360; a += 5, i++) {
+      const rad = a * Math.PI / 180;
+      path.push({
+        lat: origin.lat + Math.sin(rad) * 0.00028 + Math.sin(rad * 3) * 0.00003 + rnd() * 0.00003,
+        lng: origin.lng + Math.cos(rad) * 0.00036 + rnd() * 0.00003,
+        acc: 5 + Math.round(Math.abs(rnd()) * 8),
+        heading: (a + 90) % 360,
+        jump: i === 33
+      });
+    }
+    let i = 0;
+    state.demoTimer = setInterval(() => {
+      if (!state.session || i >= path.length) { clearInterval(state.demoTimer); state.demoTimer = null; return; }
+      const p = path[i];
+      const fix = { lat: p.lat, lng: p.lng, acc: p.acc, t: Date.now(), heading: p.heading, q: 14 };
+      if (p.jump) { fix.lat += 0.0018; fix.acc = 12; }   // ~200 m bogus jump: should be rejected
+      onFix(fix);
+      if (notesAt[i]) addPinRecord(notesAt[i], bestPinFix());
+      i++;
+    }, 220);
+  }
+
+  function addPinRecord(text, fix) {
+    const s = state.session;
+    if (!s || !fix) return null;
+    const pin = {
+      id: uid(),
+      lat: +fix.lat.toFixed(7),
+      lng: +fix.lng.toFixed(7),
+      acc: fix.acc == null ? null : Math.round(fix.acc * 10) / 10,
+      t: Date.now(),
+      text: text || "(unlabeled pin)"
+    };
+    if (fix.n > 1) pin.n = fix.n;
+    s.pins.push(pin);
+    updateWalkHud();
+    checkpoint(true);
+    queueRedraw();
+    return pin;
+  }
+
+  function addPin(text, quick) {
+    const s = state.session;
+    if (!s) return;
+    const note = (text || "").trim();
+    if (!note && !quick) {
+      $("noteField").focus();
+      toast("Type or dictate a note — or use Quick pin");
+      return;
+    }
+    const fix = bestPinFix();
+    if (!fix) {
+      toast(geo.status === "denied" ? "Location is blocked — pins need a location" : "No location yet — wait for GPS");
+      return;
+    }
+    if (fix.rough && !confirm("Only a very rough location is available (" + fmtAcc(fix.acc) + "). Pin it anyway?")) return;
+    const pin = addPinRecord(note || "(unlabeled pin)", fix);
+    if (!pin) return;
+    $("noteField").value = "";
+    if (mic.active) stopMic();
+    const bits = ["Pinned " + fmtAcc(pin.acc)];
+    if (pin.n > 1) bits.push("avg of " + pin.n);
+    if (fix.age > CFG.LOST_AFTER) bits.push("last fix " + Math.round(fix.age / 1000) + " s ago");
+    toast(bits.join(" · "));
+  }
+
+  function teardownWalk() {
+    stopGeo();
+    clearInterval(state.clockTimer); state.clockTimer = null;
+    clearInterval(state.demoTimer); state.demoTimer = null;
+    clearTimeout(state.cpTimer); state.cpTimer = null;
+    stopMic();
+    releaseWake();
+  }
+
+  function stopWalk() {
+    const s = state.session;
+    if (!s) { teardownWalk(); goHome(); return; }
+    if ((s.points.length || s.pins.length) && !confirm("Finish this walk and save it?")) return;
+    teardownWalk();
+    state.session = null;
+    state.demo = false;
+    geo.status = "idle";
+    if (!s.points.length && !s.pins.length) {
+      remove(s.id);
+      goHome();
+      toast("Nothing was recorded — walk discarded");
+      return;
+    }
+    s.stoppedAt = Date.now();
+    if (!s.label) s.label = defaultLabel(s);
+    upsert(s);
+    openReview(s.id);
+  }
+  function defaultLabel(s) { return "Walk · " + fmtTime(s.startedAt); }
+
+  /* ===================== Mic (Web Speech API; iOS needs Siri & Dictation on) ===================== */
+  const mic = { rec: null, active: false, base: "" };
+  function setMicUi(on) {
+    const b = $("btnMic");
+    b.classList.toggle("on", on);
+    b.setAttribute("aria-pressed", String(on));
+    b.setAttribute("aria-label", on ? "Stop dictation" : "Dictate note");
+  }
+  function stopMic() {
+    const rec = mic.rec;
+    mic.rec = null;
+    mic.active = false;
+    if (rec) { try { rec.abort ? rec.abort() : rec.stop(); } catch (_) {} }
+    setMicUi(false);
+  }
+  function toggleMic() {
+    if (mic.active) { const rec = mic.rec; try { rec && rec.stop(); } catch (_) {} mic.active = false; setMicUi(false); return; }
+    const Rec = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!Rec) { toast("Voice input isn't available here — use the keyboard's mic key"); return; }
+    let rec;
+    try { rec = new Rec(); } catch (_) { toast("Voice input failed to start — use the keyboard's mic key"); return; }
+    mic.rec = rec;
+    mic.base = $("noteField").value.trim();
+    rec.lang = navigator.language || "en-US";
+    rec.continuous = false;
+    rec.interimResults = true;
+    rec.onresult = (e) => {
+      if (mic.rec !== rec) return;
+      let text = "";
+      for (let i = 0; i < e.results.length; i++) text += e.results[i][0].transcript;
+      text = text.trim();
+      $("noteField").value = mic.base ? mic.base + (text ? " " + text : "") : text;
+    };
+    rec.onerror = (e) => {
+      const code = e && e.error;
+      if (code === "aborted") return;
+      if (code === "not-allowed" || code === "service-not-allowed") toast("Mic blocked — allow Microphone for this site and turn on Siri & Dictation", 4200);
+      else if (code === "no-speech") toast("Didn't catch that — try again");
+      else if (code === "network") toast("Speech service unreachable — type the note");
+      else toast("Mic failed — type the note");
+    };
+    rec.onend = () => { if (mic.rec === rec) { mic.rec = null; mic.active = false; setMicUi(false); } };
+    try { rec.start(); mic.active = true; setMicUi(true); toast("Listening… tap the mic again to stop", 1800); }
+    catch (_) { mic.rec = null; mic.active = false; setMicUi(false); toast("Mic is busy — try again"); }
+  }
+
+  /* ===================== Review ===================== */
+  function goHome() {
+    if (sampling) sampling.cancel();
+    state.review = null;
+    selectedPinId = null;
+    renderHome();
+    show("home");
+  }
+
+  function openReview(id) {
+    const s = loadAll().find((x) => x.id === id);
+    if (!s) { toast("Walk not found"); renderHome(); return; }
+    if (sampling) sampling.cancel();
+    state.review = s;
+    pendingShare = null;
+    if (!s.pins.some((p) => p.id === selectedPinId)) selectedPinId = s.pins[0] ? s.pins[0].id : null;
+    $("labelField").value = s.label || "";
+    renderReviewHeader();
+    renderPinList();
+    showValidate();
+    show("review");
+    $("review").querySelector(".sheet").scrollTop = 0;
+  }
+  function renderReviewHeader() {
+    const s = state.review;
+    if (!s) return;
+    $("reviewTitle").textContent = s.label || "Walk";
+    const chip = $("reviewChip");
+    if (!s.stoppedAt) { chip.className = "chip warn"; chip.textContent = "unfinished"; }
+    else if (s.demo) { chip.className = "chip"; chip.textContent = "preview"; }
+    else { chip.className = "chip"; chip.textContent = s.pins.length + (s.pins.length === 1 ? " note" : " notes"); }
+    $("resumeRow").hidden = !!s.stoppedAt || !!s.demo;
+    const st = pathStats(s);
+    const accs = s.points.map((p) => p.acc).filter((a) => a != null).sort((a, b) => a - b);
+    const med = accs.length ? accs[Math.floor(accs.length / 2)] : null;
+    $("reviewStats").innerHTML =
+      `<div class="stat"><b>${escapeHtml(fmtDist(st.dist))}</b><span>walked</span></div>` +
+      `<div class="stat"><b>${escapeHtml(fmtDuration(st.duration))}</b><span>duration</span></div>` +
+      `<div class="stat"><b>${escapeHtml(med == null ? "—" : fmtAcc(med))}</b><span>typical GPS</span></div>` +
+      (st.area ? `<div class="stat full"><b>≈ ${escapeHtml(fmtArea(st.area))}</b><span>enclosed by the loop (rough: GPS error adds up)</span></div>` : "");
+  }
+
+  function renderPinList() {
+    const s = state.review;
+    const box = $("pinList");
+    if (!s || !s.pins.length) {
+      box.innerHTML = '<div class="empty" style="padding:14px">No notes on this walk.</div>';
+      $("validate").classList.remove("on");
+      return;
+    }
+    box.innerHTML = s.pins.map((p, i) => `
+      <button type="button" class="pin-item ${p.id === selectedPinId ? "on" : ""}" data-id="${escapeHtml(p.id)}" aria-pressed="${p.id === selectedPinId}">
+        <span class="pin-num">${i + 1}</span>
+        <span class="pin-body">${escapeHtml(p.text)}
+          <small>${escapeHtml(fmtTime(p.t))} · ${escapeHtml(fmtAcc(p.acc))}${p.n > 1 ? " · avg of " + p.n : ""}</small>
+          <small class="mono">${fmtCoord(p.lat)}, ${fmtCoord(p.lng)}</small>
+        </span>
+      </button>`).join("");
+  }
+  $("pinList").addEventListener("click", (e) => {
+    const b = e.target.closest(".pin-item");
+    if (b) selectPin(b.dataset.id);
+  });
+  function selectPin(id) {
+    if (sampling) sampling.cancel();
+    selectedPinId = id;
+    renderPinList();
+    showValidate();
+    drawReview();
+  }
+  function selectedPin() {
+    const s = state.review;
+    return s ? s.pins.find((p) => p.id === selectedPinId) || null : null;
+  }
+
+  function setVerdict(cls, main, sub) {
+    const v = $("valVerdict");
+    v.className = "verdict" + (cls ? " " + cls : "");
+    v.innerHTML = escapeHtml(main) + (sub ? "<small>" + escapeHtml(sub) + "</small>" : "");
+  }
+  function showValidate() {
+    const pin = selectedPin();
+    const box = $("validate");
+    if (!pin) { box.classList.remove("on"); return; }
+    box.classList.add("on");
+    $("valTitle").textContent = pin.text;
+    $("valMeta").textContent = fmtCoord(pin.lat) + ", " + fmtCoord(pin.lng) + "  ·  " + fmtAcc(pin.acc) + (pin.n > 1 ? " · avg of " + pin.n : "");
+    $("lnkMaps").href = mapsUrl(pin);
+    $("btnCheck").disabled = false;
+    $("btnUpdatePin").disabled = false;
+    setVerdict("", "Stand still, then tap Check to compare your live GPS to this pin.");
+  }
+
+  function verdictFor(d, pinAcc, hereAcc, dir) {
+    const u = Math.sqrt(Math.pow(pinAcc || 20, 2) + Math.pow(hereAcc || 20, 2));
+    const away = fmtDist(d) + (d >= 3 ? " " + dir : "");
+    const sub = "Combined GPS uncertainty ≈ " + fmtAcc(u) + " (pin " + fmtAcc(pinAcc) + ", phone " + fmtAcc(hereAcc) + ")";
+    if (d <= Math.max(8, u)) return { cls: "good", text: "You're at this note — " + fmtDist(d) + " away, within GPS error", sub };
+    if (d <= Math.max(25, 2 * u)) return { cls: "warn", text: "Close — the pin is " + away + " of you. Could be GPS error.", sub };
+    return { cls: "bad", text: "Not at this pin — it's " + away + " of you", sub };
+  }
+
+  function checkAgainstPin() {
+    const pin = selectedPin();
+    if (!pin) return;
+    if (!("geolocation" in navigator)) { toast("No GPS on this device — copy coordinates instead"); return; }
+    const pinId = pin.id;
+    const btn = $("btnCheck");
+    btn.disabled = true;
+    setVerdict("busy", "Getting a live fix… hold still");
+    sampleFix(CFG.SAMPLE_MS, (n, f) => {
+      if (selectedPinId === pinId) setVerdict("busy", "Averaging readings… " + n + " so far (" + fmtAcc(f.acc) + ")");
+    }).then((here) => {
+      if (selectedPinId !== pinId) return;
+      const d = haversine(here, pin);
+      const v = verdictFor(d, pin.acc, here.acc, compass(bearing(here, pin)));
+      setVerdict(v.cls, v.text, v.sub + (here.n > 1 ? " · " + here.n + " readings averaged" : ""));
+    }).catch((err) => {
+      if (selectedPinId !== pinId || (err && err.code === "cancel")) return;
+      if (err && err.code === 1) setVerdict("warn", "Location is blocked.", "Allow Location for this site, or copy the coordinates and check in Maps.");
+      else setVerdict("warn", "Couldn't get a live fix.", "Try again outdoors or near a window, or copy the coordinates instead.");
+    }).then(() => { if (selectedPinId === pinId) btn.disabled = false; });
+  }
+
+  function copyCoords() {
+    const pin = selectedPin();
+    if (!pin) return;
+    const text = fmtCoord(pin.lat) + ", " + fmtCoord(pin.lng);
+    const fallback = () => {
+      const ta = document.createElement("textarea");
+      ta.value = text; ta.setAttribute("readonly", ""); ta.style.position = "fixed"; ta.style.opacity = "0";
+      document.body.appendChild(ta); ta.select(); ta.setSelectionRange(0, text.length);
+      let ok = false;
+      try { ok = document.execCommand("copy"); } catch (_) {}
+      ta.remove();
+      if (ok) toast("Coordinates copied"); else prompt("Copy coordinates", text);
+    };
+    if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(text).then(() => toast("Coordinates copied")).catch(fallback);
+    else fallback();
+  }
+
+  function saveReview() {
+    const s = state.review;
+    if (!s) return false;
+    pendingShare = null;
+    return upsert(s);
+  }
+
+  function updatePinToFix() {
+    const pin = selectedPin();
+    const s = state.review;
+    if (!pin || !s) return;
+    if (!confirm("Move this pin to your current GPS position? The note text stays. Hold still for a few seconds while it averages.")) return;
+    const pinId = pin.id;
+    $("btnUpdatePin").disabled = true;
+    setVerdict("busy", "Averaging your position…");
+    sampleFix(CFG.SAMPLE_MS, (n, f) => {
+      if (selectedPinId === pinId) setVerdict("busy", "Averaging your position… " + n + " readings (" + fmtAcc(f.acc) + ")");
+    }).then((fix) => {
+      if (state.review !== s || selectedPinId !== pinId) return;
+      if (pin.acc != null && fix.acc > pin.acc * 1.5 + 5 &&
+          !confirm("Your current position (" + fmtAcc(fix.acc) + ") is less precise than the pin's (" + fmtAcc(pin.acc) + "). Move it anyway?")) { showValidate(); return; }
+      pin.lat = +fix.lat.toFixed(7);
+      pin.lng = +fix.lng.toFixed(7);
+      pin.acc = Math.round(fix.acc * 10) / 10;
+      pin.t = Date.now();
+      if (fix.n > 1) pin.n = fix.n; else delete pin.n;
+      saveReview();
+      renderPinList(); showValidate(); renderReviewHeader(); drawReview();
+      toast("Pin moved · " + fmtAcc(pin.acc));
+    }).catch((err) => {
+      if (err && err.code === "cancel") return;
+      showValidate();
+      toast(err && err.code === 1 ? "Location is blocked — can't move the pin" : "Couldn't get a live fix");
+    }).then(() => { $("btnUpdatePin").disabled = false; });
+  }
+
+  function editPin() {
+    const pin = selectedPin();
+    if (!pin) return;
+    const next = prompt("Edit note", pin.text === "(unlabeled pin)" ? "" : pin.text);
+    if (next == null) return;
+    pin.text = next.trim().slice(0, 300) || "(unlabeled pin)";
+    saveReview();
+    renderPinList(); showValidate(); drawReview();
+    toast("Note updated");
+  }
+  function deletePin() {
+    const s = state.review, pin = selectedPin();
+    if (!s || !pin) return;
+    if (!confirm("Delete the pin “" + pin.text + "”?")) return;
+    const i = s.pins.indexOf(pin);
+    s.pins.splice(i, 1);
+    const next = s.pins[Math.min(i, s.pins.length - 1)];
+    selectedPinId = next ? next.id : null;
+    saveReview();
+    renderReviewHeader(); renderPinList(); showValidate(); drawReview();
+    toast("Pin deleted");
+  }
+
+  /* ===================== Drawing ===================== */
+  function fitCanvas(canvas) {
+    const r = canvas.getBoundingClientRect();
+    const dpr = Math.min(3, window.devicePixelRatio || 1);
+    const w = Math.max(1, Math.floor(r.width * dpr)), h = Math.max(1, Math.floor(r.height * dpr));
+    if (canvas.width !== w) canvas.width = w;      // only reallocate when the size changes
+    if (canvas.height !== h) canvas.height = h;
+    return dpr;
+  }
+
+  // Fit + centre everything (v1 anchored the drawing to the bottom-left corner).
+  function makeView(canvas, session, u, padTop, padBottom, live) {
+    const pts = session.points.concat(session.pins);
+    if (live) {
+      // keep your dot and a bit of its accuracy circle on screen
+      const r = Math.min(live.acc || 0, 25), k = mPerDeg(live.lat);
+      pts.push({ lat: live.lat + r / k.lat, lng: live.lng + r / k.lng }, { lat: live.lat - r / k.lat, lng: live.lng - r / k.lng });
+    }
+    if (!pts.length) return null;
+    const origin = { lat: pts[0].lat, lng: pts[0].lng };
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    pts.forEach((p) => {
+      const q = toXY(origin, p);
+      minX = Math.min(minX, q.x); maxX = Math.max(maxX, q.x);
+      minY = Math.min(minY, q.y); maxY = Math.max(maxY, q.y);
+    });
+    const MIN_SPAN = 30;  // m; stops a single point from zooming in absurdly
+    if (maxX - minX < MIN_SPAN) { const c = (minX + maxX) / 2; minX = c - MIN_SPAN / 2; maxX = c + MIN_SPAN / 2; }
+    if (maxY - minY < MIN_SPAN) { const c = (minY + maxY) / 2; minY = c - MIN_SPAN / 2; maxY = c + MIN_SPAN / 2; }
+    const w = canvas.width, h = canvas.height;
+    const padX = Math.max(34 * u, w * 0.1);
+    const pT = padTop + Math.max(28 * u, h * 0.06), pB = padBottom + Math.max(28 * u, h * 0.06);
+    const scale = Math.max(1e-6, Math.min((w - 2 * padX) / (maxX - minX), Math.max(10, h - pT - pB) / (maxY - minY)));
+    const cx = (minX + maxX) / 2, cy = (minY + maxY) / 2;
+    const ox = w / 2, oy = pT + (h - pT - pB) / 2;
+    return {
+      origin, scale,
+      project(p) { const q = toXY(origin, p); return { x: ox + (q.x - cx) * scale, y: oy - (q.y - cy) * scale }; }
+    };
+  }
+
+  function drawGrid(ctx, w, h, u) {
+    ctx.strokeStyle = "#141a22";
+    ctx.lineWidth = 1;
+    const step = Math.max(8, Math.round(36 * u));   // v1: step = w/12 could be 0 → infinite loop
+    ctx.beginPath();
+    for (let x = step; x < w; x += step) { ctx.moveTo(x + 0.5, 0); ctx.lineTo(x + 0.5, h); }
+    for (let y = step; y < h; y += step) { ctx.moveTo(0, y + 0.5); ctx.lineTo(w, y + 0.5); }
+    ctx.stroke();
+  }
+
+  function niceScale(pxPerM, targetPx) {
+    const ft = prefs.units === "ft";
+    const unitM = ft ? 0.3048 : 1;
+    const steps = ft ? [5, 10, 25, 50, 100, 200, 250, 500, 1000, 2000, 2640, 5280] : [1, 2, 5, 10, 20, 25, 50, 100, 200, 250, 500, 1000, 2000, 5000];
+    let best = steps[0];
+    steps.forEach((s) => { if (s * unitM * pxPerM <= targetPx) best = s; });
+    const label = ft ? (best >= 2640 ? (best / 5280) + " mi" : best + " ft") : (best >= 1000 ? (best / 1000) + " km" : best + " m");
+    return { px: best * unitM * pxPerM, label };
+  }
+
+  function roundRect(ctx, x, y, w, h, r) {
+    ctx.beginPath();
+    ctx.moveTo(x + r, y);
+    ctx.arcTo(x + w, y, x + w, y + h, r);
+    ctx.arcTo(x + w, y + h, x, y + h, r);
+    ctx.arcTo(x, y + h, x, y, r);
+    ctx.arcTo(x, y, x + w, y, r);
+    ctx.closePath();
+  }
+
+  function drawSession(canvas, session, opts) {
+    opts = opts || {};
+    const u = opts.unit || fitCanvas(canvas);
+    const ctx = canvas.getContext("2d");
+    const w = canvas.width, h = canvas.height;
+    const FONT = "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif";
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.fillStyle = "#07090c";
+    ctx.fillRect(0, 0, w, h);
+    drawGrid(ctx, w, h, u);
+    canvas._hits = [];
+
+    const footH = opts.footer ? 44 * u : 0;
+    const padTop = (opts.headline ? 86 * u : 0) + (opts.hudSpace ? 40 * u : 0);
+    const padBottom = footH + 34 * u;
+    const view = makeView(canvas, session, u, padTop, padBottom, opts.live);
+    if (!view) {
+      ctx.fillStyle = "#a9b6c5";
+      ctx.font = `500 ${15 * u}px ${FONT}`;
+      ctx.textAlign = "center"; ctx.textBaseline = "middle";
+      ctx.fillText(opts.emptyText || "Waiting for the first fix…", w / 2, h / 2);
+      drawText();
+      return;
+    }
+    const P = view.project;
+
+    // live accuracy halo
+    if (opts.live) {
+      const p = P(opts.live);
+      ctx.beginPath(); ctx.arc(p.x, p.y, Math.max(6 * u, opts.live.acc * view.scale), 0, Math.PI * 2);
+      ctx.fillStyle = "rgba(108,182,255,0.14)"; ctx.fill();
+      ctx.lineWidth = 1.5 * u; ctx.strokeStyle = "rgba(108,182,255,0.55)"; ctx.stroke();
+    }
+    // selected pin uncertainty
+    const sel = opts.selectedId ? session.pins.find((p) => p.id === opts.selectedId) : null;
+    if (sel && sel.acc) {
+      const p = P(sel);
+      ctx.beginPath(); ctx.arc(p.x, p.y, Math.max(10 * u, sel.acc * view.scale), 0, Math.PI * 2);
+      ctx.fillStyle = "rgba(255,191,71,0.10)"; ctx.fill();
+      ctx.setLineDash([4 * u, 4 * u]); ctx.lineWidth = 1.5 * u; ctx.strokeStyle = "rgba(255,191,71,0.6)"; ctx.stroke(); ctx.setLineDash([]);
+    }
+
+    // trail, broken at gaps
+    const line = session.points.map(P);
+    ctx.lineJoin = "round"; ctx.lineCap = "round";
+    if (line.length > 1) {
+      ctx.beginPath();
+      ctx.moveTo(line[0].x, line[0].y);
+      for (let i = 1; i < line.length; i++) {
+        if (session.points[i].gap) ctx.moveTo(line[i].x, line[i].y); else ctx.lineTo(line[i].x, line[i].y);
+      }
+      ctx.strokeStyle = "#b6f34a"; ctx.lineWidth = 3.5 * u; ctx.stroke();
+      ctx.setLineDash([6 * u, 6 * u]); ctx.lineWidth = 2 * u; ctx.strokeStyle = "rgba(182,243,74,.4)";
+      ctx.beginPath();
+      for (let i = 1; i < line.length; i++) if (session.points[i].gap) { ctx.moveTo(line[i - 1].x, line[i - 1].y); ctx.lineTo(line[i].x, line[i].y); }
+      if (session.stoppedAt && line.length > 2) { ctx.moveTo(line[line.length - 1].x, line[line.length - 1].y); ctx.lineTo(line[0].x, line[0].y); }
+      ctx.stroke(); ctx.setLineDash([]);
+    }
+    if (line.length) {
+      ctx.beginPath(); ctx.arc(line[0].x, line[0].y, 6 * u, 0, Math.PI * 2);
+      ctx.fillStyle = "#07090c"; ctx.fill(); ctx.lineWidth = 2.5 * u; ctx.strokeStyle = "#b6f34a"; ctx.stroke();
+      if (!opts.live) {
+        const last = line[line.length - 1];
+        ctx.beginPath(); ctx.arc(last.x, last.y, 5 * u, 0, Math.PI * 2); ctx.fillStyle = "#b6f34a"; ctx.fill();
+      }
+    }
+    if (opts.live) {
+      const p = P(opts.live);
+      ctx.beginPath(); ctx.arc(p.x, p.y, 8 * u, 0, Math.PI * 2); ctx.fillStyle = "#fff"; ctx.fill();
+      ctx.beginPath(); ctx.arc(p.x, p.y, 5.5 * u, 0, Math.PI * 2); ctx.fillStyle = "#3d9bff"; ctx.fill();
+    }
+
+    // pins + labels with simple collision avoidance
+    const placed = [];
+    const overlaps = (r) => placed.some((q) => r.x < q.x + q.w && r.x + r.w > q.x && r.y < q.y + q.h && r.y + r.h > q.y);
+    const pinPos = session.pins.map(P);
+    pinPos.forEach((p) => placed.push({ x: p.x - 12 * u, y: p.y - 12 * u, w: 24 * u, h: 24 * u }));
+    session.pins.forEach((pin, i) => {
+      const p = pinPos[i];
+      const isSel = sel && pin.id === sel.id;
+      const r = (isSel ? 13 : 10.5) * u;
+      if (isSel) { ctx.beginPath(); ctx.arc(p.x, p.y, r + 4 * u, 0, Math.PI * 2); ctx.lineWidth = 3 * u; ctx.strokeStyle = "#fff"; ctx.stroke(); }
+      ctx.beginPath(); ctx.arc(p.x, p.y, r, 0, Math.PI * 2);
+      ctx.fillStyle = "#ffbf47"; ctx.fill();
+      ctx.lineWidth = 1.5 * u; ctx.strokeStyle = "#07090c"; ctx.stroke();
+      ctx.fillStyle = "#0b0d10"; ctx.font = `800 ${12 * u}px ${FONT}`;
+      ctx.textAlign = "center"; ctx.textBaseline = "middle";
+      ctx.fillText(String(i + 1), p.x, p.y + 0.5 * u);
+      canvas._hits.push({ id: pin.id, x: p.x, y: p.y });
+
+      let label = pin.text || "";
+      if (label.length > 26) label = label.slice(0, 25) + "…";
+      ctx.font = `600 ${13 * u}px ${FONT}`;
+      const tw = ctx.measureText(label).width + 14 * u, th = 22 * u;
+      const base = [
+        { x: p.x + 16 * u, y: p.y - th / 2 },
+        { x: p.x - 16 * u - tw, y: p.y - th / 2 },
+        { x: p.x - tw / 2, y: p.y - 17 * u - th },
+        { x: p.x - tw / 2, y: p.y + 17 * u }
+      ];
+      // then try sliding left/right labels up and down before giving up
+      [1, -1, 2, -2, 3, -3].forEach((k) => {
+        base.push({ x: p.x + 16 * u, y: p.y - th / 2 + k * (th + 3 * u) });
+        base.push({ x: p.x - 16 * u - tw, y: p.y - th / 2 + k * (th + 3 * u) });
+      });
+      const cands = base.map((c) => ({ x: Math.min(Math.max(4 * u, c.x), w - tw - 4 * u), y: Math.min(Math.max(4 * u, c.y), h - th - 4 * u), w: tw, h: th }));
+      let spot = cands.find((c) => !overlaps(c));
+      if (!spot) { if (!isSel) return; spot = cands[0]; }   // crowded: number only (text is in the list)
+      placed.push(spot);
+      if (Math.hypot(spot.x + (spot.x < p.x ? tw : 0) - p.x, spot.y + th / 2 - p.y) > 30 * u) {
+        ctx.beginPath(); ctx.moveTo(p.x, p.y);
+        ctx.lineTo(spot.x < p.x ? spot.x + tw : spot.x, spot.y + th / 2);
+        ctx.lineWidth = 1 * u; ctx.strokeStyle = "rgba(243,246,250,.45)"; ctx.stroke();
+      }
+      roundRect(ctx, spot.x, spot.y, tw, th, 7 * u);
+      ctx.fillStyle = isSel ? "rgba(255,255,255,.96)" : "rgba(11,13,16,.88)"; ctx.fill();
+      ctx.lineWidth = 1 * u; ctx.strokeStyle = isSel ? "#fff" : "#2e3846"; ctx.stroke();
+      ctx.fillStyle = isSel ? "#0b0d10" : "#f3f6fa";
+      ctx.textAlign = "left"; ctx.textBaseline = "middle";
+      ctx.fillText(label, spot.x + 7 * u, spot.y + th / 2 + 0.5 * u);
+    });
+
+    // scale bar + north arrow
+    const sb = niceScale(view.scale, w * 0.28);
+    const sx = w - 14 * u - sb.px, sy = h - 16 * u - footH;
+    ctx.strokeStyle = "#f3f6fa"; ctx.lineWidth = 2 * u; ctx.lineCap = "butt";
+    ctx.beginPath(); ctx.moveTo(sx, sy - 5 * u); ctx.lineTo(sx, sy); ctx.lineTo(sx + sb.px, sy); ctx.lineTo(sx + sb.px, sy - 5 * u); ctx.stroke();
+    ctx.fillStyle = "#f3f6fa"; ctx.font = `600 ${12 * u}px ${FONT}`; ctx.textAlign = "center"; ctx.textBaseline = "bottom";
+    ctx.fillText(sb.label, sx + sb.px / 2, sy - 4 * u);
+    ctx.textAlign = "right";
+    ctx.fillText("N ↑", w - 14 * u, sy - 22 * u);
+
+    drawText();
+
+    function drawText() {
+      ctx.textAlign = "left"; ctx.textBaseline = "alphabetic";
+      if (opts.headline) {
+        ctx.fillStyle = "#f3f6fa"; ctx.font = `750 ${24 * u}px ${FONT}`;
+        let head = opts.headline;
+        if (ctx.measureText(head).width > w - 44 * u) {
+          while (head.length > 4 && ctx.measureText(head + "…").width > w - 44 * u) head = head.slice(0, -1);
+          head += "…";
+        }
+        ctx.fillText(head, 22 * u, 44 * u);
+        ctx.fillStyle = "#a9b6c5"; ctx.font = `500 ${14 * u}px ${FONT}`;
+        ctx.fillText(opts.sub || "", 22 * u, 68 * u);
+      }
+      if (opts.footer) {
+        ctx.fillStyle = "#8d9aa9"; ctx.font = `500 ${11.5 * u}px ${FONT}`;
+        ctx.fillText(opts.footer, 22 * u, h - 18 * u);
+      }
+    }
+  }
+
+  function drawWalk() {
+    if (!state.session || current() !== "walk") return;
+    const live = geo.kf && geo.lastRaw ? { lat: geo.kf.lat, lng: geo.kf.lng, acc: geo.lastRaw.acc } : null;
+    drawSession($("canvasWalk"), state.session, { live, hudSpace: true, emptyText: state.demo ? "Starting preview…" : ({ denied: "No location — see the note above", unavailable: "No location available", insecure: "No location — page needs https" }[geo.status] || "Waiting for the first fix…") });
+  }
+  function drawReview() {
+    if (!state.review || current() !== "review") return;
+    drawSession($("canvasReview"), state.review, { selectedId: selectedPinId, emptyText: "No location data in this walk" });
+  }
+
+  $("canvasReview").addEventListener("click", (ev) => {
+    const s = state.review, canvas = $("canvasReview");
+    if (!s || !s.pins.length || !canvas._hits) return;
+    const rect = canvas.getBoundingClientRect();
+    const k = canvas.width / Math.max(1, rect.width);
+    const x = (ev.clientX - rect.left) * k, y = (ev.clientY - rect.top) * (canvas.height / Math.max(1, rect.height));
+    let best = null, bestD = Infinity;
+    canvas._hits.forEach((hh) => { const d = Math.hypot(hh.x - x, hh.y - y); if (d < bestD) { bestD = d; best = hh; } });
+    if (best && bestD <= 30 * k) selectPin(best.id);
+  });
+
+  /* ===================== Export / share ===================== */
+  function exportCanvas(session) {
+    const c = document.createElement("canvas");
+    c.width = 1290;
+    c.height = 1674;
+    const st = pathStats(session);
+    drawSession(c, session, {
+      unit: 3,
+      headline: session.label || "Perimeter Notes",
+      sub: fmtTime(session.startedAt) + "  ·  " + fmtDist(st.dist) + "  ·  " + session.pins.length + " highlights",
+      footer: "Lime = GPS trail · amber = notes · ± GPS accuracy; indoors can drift 20–50 m",
+      emptyText: "No location data"
+    });
+    return c;
+  }
+  function dataUrlToBlob(url) {
+    const comma = url.indexOf(",");
+    const mime = (url.slice(0, comma).match(/:(.*?);/) || [])[1] || "image/png";
+    const bin = atob(url.slice(comma + 1));
+    const arr = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
+    return new Blob([arr], { type: mime });
+  }
+
+  function reportHtml(session, pngDataUrl) {
+    const st = pathStats(session);
+    const pins = session.pins.map((p) =>
+      `<li><strong>${escapeHtml(p.text)}</strong><br><span>${escapeHtml(fmtTime(p.t))} · ${escapeHtml(fmtAcc(p.acc))} · <a href="${escapeHtml(mapsUrl(p))}">${fmtCoord(p.lat)}, ${fmtCoord(p.lng)}</a></span></li>`
+    ).join("") || "<li>No highlight notes.</li>";
+    return `<!DOCTYPE html>
+<html lang="en"><head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"/>
+<meta name="apple-mobile-web-app-capable" content="yes"/>
+<meta name="color-scheme" content="dark"/>
+<title>${escapeHtml(session.label || "Perimeter Notes")}</title>
+<style>
+  html,body{margin:0;background:#0b0d10;color:#f3f6fa;font-family:-apple-system,sans-serif;line-height:1.4}
+  .wrap{max-width:720px;margin:0 auto;min-height:100vh;padding:calc(16px + env(safe-area-inset-top)) 16px calc(24px + env(safe-area-inset-bottom))}
+  h1{font-size:28px;letter-spacing:-.03em;margin:0 0 6px}
+  .sub{color:#a9b6c5;margin:0 0 16px}
+  img{width:100%;border-radius:16px;border:1px solid #2e3846;display:block}
+  button{margin-top:14px;width:100%;min-height:50px;border:0;border-radius:14px;font-weight:700;font-size:16px;background:#b6f34a;color:#0b0d10}
+  ol{padding-left:22px} li{margin:0 0 12px} li span{color:#a9b6c5;font-size:14px} a{color:#6cb6ff}
+  .note{color:#a9b6c5;font-size:13px}
+</style></head>
+<body>
+<div class="wrap">
+  <h1>${escapeHtml(session.label || "Perimeter Notes")}</h1>
+  <p class="sub">${escapeHtml(fmtTime(session.startedAt))} · ${escapeHtml(fmtDuration(st.duration))} · ${escapeHtml(fmtDist(st.dist))} walked · ${session.pins.length} highlights${st.area ? " · ≈ " + escapeHtml(fmtArea(st.area)) + " enclosed" : ""}</p>
+  <img alt="Venue diagram" src="${pngDataUrl}"/>
+  <button onclick="var d=document.documentElement,f=d.requestFullscreen||d.webkitRequestFullscreen;if(f){try{f.call(d)}catch(e){alert('Full screen is not available here')}}else{alert('iPhone Safari has no full-screen mode for pages. Pinch to zoom the image instead.')}">Open full screen</button>
+  <h2>Highlights</h2>
+  <ol>${pins}</ol>
+  <p class="note">Positions come from phone GPS and carry the ± accuracy shown. Indoors, readings can drift 20–50 m.</p>
+</div>
+</body></html>`;
+  }
+
+  function slug(s) {
+    return (s || "walk").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 40) || "walk";
+  }
+  function shareKey(s) { return s.id + "|" + s.label + "|" + s.points.length + "|" + s.pins.map((p) => p.id + p.lat + p.lng + p.text).join(","); }
+
+  let pendingShare = null;
+  function buildShare(session) {
+    const canvas = exportCanvas(session);
+    const pngUrl = canvas.toDataURL("image/png");
+    const html = reportHtml(session, pngUrl);
+    const title = session.label || "Perimeter Notes";
+    return {
+      key: shareKey(session), at: Date.now(), title,
+      text: title + "\n" + session.pins.map((p, i) => (i + 1) + ". " + p.text + " (" + fmtCoord(p.lat) + ", " + fmtCoord(p.lng) + ")").join("\n"),
+      png: new File([dataUrlToBlob(pngUrl)], slug(session.label) + "-diagram.png", { type: "image/png" }),
+      html: new File([html], slug(session.label) + "-fullscreen.html", { type: "text/html" })
+    };
+  }
+  const canShareSafe = (d) => { try { return !!(navigator.canShare && navigator.canShare(d)); } catch (_) { return false; } };
+
+  // Built synchronously so navigator.share() runs inside the tap. v1 awaited canvas.toBlob()
+  // first, which can cost iOS's user-activation and make the share sheet fail.
+  function shareSession(session) {
+    let p = pendingShare && pendingShare.key === shareKey(session) && Date.now() - pendingShare.at < 120000 ? pendingShare : null;
+    const retry = !!p;
+    pendingShare = null;
+    if (!p) {
+      try { p = buildShare(session); } catch (_) { toast("Couldn't draw the diagram"); return; }
+    }
+    if (!navigator.share) {
+      downloadFile(p.png); downloadFile(p.html);
+      toast("Diagram + full-screen report downloaded");
+      return;
+    }
+    const full = { title: p.title, text: p.text, files: [p.png, p.html] };
+    const img = { title: p.title, text: p.text, files: [p.png] };
+    let payload, extras = [], msg;
+    if (canShareSafe(full)) { payload = full; msg = "Share sheet opened"; }
+    else if (canShareSafe(img)) { payload = img; extras = [p.html]; msg = "Image shared · HTML report saved"; }
+    else { payload = { title: p.title, text: p.text }; extras = [p.png, p.html]; msg = "Text shared · files downloaded"; }
+    let res;
+    try { res = navigator.share(payload); } catch (err) { res = Promise.reject(err); }
+    Promise.resolve(res).then(() => {
+      extras.forEach(downloadFile);
+      toast(msg);
+    }).catch((err) => {
+      if (err && err.name === "AbortError") return;
+      if (err && err.name === "NotAllowedError" && !retry) {
+        pendingShare = p;
+        toast("Diagram ready — tap Send again", 3500);
+        return;
+      }
+      downloadFile(p.png); downloadFile(p.html);
+      toast("Share blocked — files downloaded instead");
+    });
+  }
+
+  function downloadFile(file) {
+    try {
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(file);
+      a.download = file.name;
+      a.rel = "noopener";
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(a.href), 30000);
+    } catch (_) {}
+  }
+
+  function mailDraft(session) {
+    const subject = session.label || "Perimeter Notes";
+    const st = pathStats(session);
+    const body = [
+      subject,
+      "Completed " + fmtTime(session.stoppedAt || session.startedAt) + " · " + fmtDuration(st.duration) + " · " + fmtDist(st.dist),
+      "",
+      "Highlights:",
+      ...session.pins.map((p, i) => `${i + 1}. ${p.text}\n   ${fmtCoord(p.lat)}, ${fmtCoord(p.lng)} (${fmtAcc(p.acc)})\n   ${mapsUrl(p)}`),
+      "",
+      "Positions are phone GPS readings; indoors they can drift 20–50 m.",
+      "Use Send diagram first if you need the graphic files."
+    ].join("\n");
+    location.href = "mailto:?subject=" + encodeURIComponent(subject) + "&body=" + encodeURIComponent(body);
+  }
+
+  /* ===================== Backup ===================== */
+  function exportBackup() {
+    const list = loadAll();
+    if (!list.length) { toast("No walks to back up yet"); return; }
+    const data = JSON.stringify({ app: "perimeter-notes", schema: 2, exportedAt: new Date().toISOString(), sessions: list });
+    const d = new Date();
+    const name = "perimeter-notes-backup-" + d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0") + ".json";
+    const file = new File([data], name, { type: "application/json" });
+    if (navigator.share && canShareSafe({ files: [file] })) {
+      navigator.share({ files: [file], title: "Perimeter Notes backup" }).then(() => toast("Backup shared")).catch((err) => {
+        if (err && err.name === "AbortError") return;
+        downloadFile(file); toast("Backup downloaded");
+      });
+    } else { downloadFile(file); toast("Backup downloaded · " + list.length + (list.length === 1 ? " walk" : " walks")); }
+  }
+  function importBackup(file) {
+    const reader = new FileReader();
+    reader.onload = () => {
+      let data;
+      try { data = JSON.parse(String(reader.result)); } catch (_) { toast("That file isn't a valid backup"); return; }
+      const incoming = (Array.isArray(data) ? data : (data && Array.isArray(data.sessions) ? data.sessions : [])).map(normalizeSession).filter(Boolean);
+      if (!incoming.length) { toast("No walks found in that file"); return; }
+      const list = loadAll();
+      const have = new Set(list.map((s) => s.id));
+      let added = 0;
+      incoming.forEach((s) => { if (!have.has(s.id)) { list.push(s); have.add(s.id); added++; } });
+      list.sort((a, b) => (b.startedAt || 0) - (a.startedAt || 0));
+      if (saveAll(list)) toast("Imported " + added + " walk" + (added === 1 ? "" : "s") + (incoming.length - added ? " · " + (incoming.length - added) + " already here" : ""));
+      renderHome();
+    };
+    reader.onerror = () => toast("Couldn't read that file");
+    reader.readAsText(file);
+  }
+
+  /* ===================== Wiring ===================== */
+  $("btnBegin").onclick = () => startWalk(false);
+  $("btnDemo").onclick = () => startWalk(true);
+  $("btnStop").onclick = stopWalk;
+  $("btnDrop").onclick = () => addPin($("noteField").value, true);
+  $("btnSaveNote").onclick = () => addPin($("noteField").value, false);
+  $("noteField").addEventListener("keydown", (e) => {
+    if (e.key === "Enter" && !e.shiftKey && !e.isComposing) { e.preventDefault(); addPin($("noteField").value, false); }
+  });
+  $("btnMic").onclick = toggleMic;
+  $("btnBackHome").onclick = goHome;
+  function saveLabel() {
+    const s = state.review;
+    if (!s) return;
+    const label = $("labelField").value.trim();
+    if (!label) { toast("Add a label first"); return; }
+    s.label = label;
+    if (saveReview()) toast("Saved to this iPhone");
+    renderReviewHeader();
+    $("labelField").blur();
+  }
+  $("btnSaveLabel").onclick = saveLabel;
+  $("labelField").addEventListener("keydown", (e) => { if (e.key === "Enter" && !e.isComposing) { e.preventDefault(); saveLabel(); } });
+  $("btnResume").onclick = () => { const s = state.review; if (s) startWalk(false, s); };
+  $("btnShare").onclick = () => state.review && shareSession(state.review);
+  $("btnMail").onclick = () => state.review && mailDraft(state.review);
+  $("btnCheck").onclick = checkAgainstPin;
+  $("btnCopy").onclick = copyCoords;
+  $("btnUpdatePin").onclick = updatePinToFix;
+  $("btnEditPin").onclick = editPin;
+  $("btnDeletePin").onclick = deletePin;
+  $("btnDelete").onclick = () => {
+    const s = state.review;
+    if (!s) return;
+    if (!confirm("Delete “" + (s.label || "this walk") + "” from this iPhone? This can't be undone.")) return;
+    remove(s.id);
+    goHome();
+    toast("Deleted");
+  };
+  $("btnExport").onclick = exportBackup;
+  $("btnImport").onclick = () => $("importFile").click();
+  $("importFile").addEventListener("change", (e) => {
+    const f = e.target.files && e.target.files[0];
+    if (f) importBackup(f);
+    e.target.value = "";
+  });
+
+  const onViewport = () => { fitViewport(); queueRedraw(); };
+  window.addEventListener("resize", onViewport);
+  if (window.visualViewport) window.visualViewport.addEventListener("resize", onViewport);
+  window.addEventListener("orientationchange", () => setTimeout(onViewport, 250));
+  document.addEventListener("visibilitychange", () => {
+    if (!state.session) return;
+    if (document.visibilityState === "hidden") {
+      state.hiddenAt = Date.now();
+      checkpoint(true);
+      stopMic();
+    } else {
+      if (state.hiddenAt && Date.now() - state.hiddenAt > CFG.GAP_AFTER_HIDDEN && !state.demo) {
+        geo.gapPending = true;
+        toast("GPS paused while Safari was in the background (" + Math.round((Date.now() - state.hiddenAt) / 1000) + " s)", 3500);
+      }
+      state.hiddenAt = 0;
+      requestWake();
+      renderGeoUi();
+    }
+  });
+  window.addEventListener("pagehide", () => { if (state.session) checkpoint(true); });
+  window.addEventListener("storage", (e) => { if (e.key === STORE && current() === "home") renderHome(); });
+
+  // test hook (harmless in production)
+  window.__pn = { geo, state, CFG, onFix, loadAll };
+
+  fitViewport();
+  watchPermission();
+  renderHome();
+})();
+</script>
+</body>
+</html>
