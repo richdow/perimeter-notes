@@ -228,6 +228,40 @@
     .stat.full { grid-column: 1 / -1; }
     .field-label { display: block; font-size: 13px; color: var(--muted); margin-bottom: 6px; font-weight: 650; }
     .label-row { display: flex; gap: 8px; margin-bottom: 16px; }
+
+    /* ---------- keywords ---------- */
+    .kw-editor { margin-bottom: 16px; }
+    .kw-chips, .kw-suggest, .kw-row, .kw-filter { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+    .kw-chips { margin-bottom: 8px; min-height: 40px; }
+    .kw-none { color: var(--muted); font-size: 14px; }
+    .kw-add { display: flex; gap: 8px; }
+    .kw-add input[type="text"] { margin: 0; }
+    .kw-add .btn { flex: none; min-width: 72px; }
+    .kw-suggest { margin-top: 10px; }
+    .kw-suggest:empty { display: none; }
+    .kw-label { font-size: 12px; color: var(--muted); font-weight: 750; text-transform: uppercase; letter-spacing: .06em; margin-right: 2px; }
+    .kchip {
+      display: inline-flex; align-items: center; gap: 4px; min-height: 40px; padding: 0 6px 0 14px;
+      border-radius: 999px; background: #22301a; border: 1px solid #3f5a22; color: #dff7b8;
+      font-size: 15px; font-weight: 650; line-height: 1; max-width: 100%;
+    }
+    .kchip-x {
+      width: 32px; height: 32px; border: 0; border-radius: 50%; background: transparent; color: inherit;
+      font-size: 20px; line-height: 1; display: inline-flex; align-items: center; justify-content: center;
+    }
+    .kchip-x:active { background: rgba(255,255,255,.12); }
+    .kchip.add { padding: 0 14px; background: var(--panel-3); border-color: var(--line); color: var(--text); }
+    .kchip.static { min-height: 28px; padding: 0 10px; font-size: 13px; }
+    .kchip.filter { padding: 0 14px; background: var(--panel-2); border-color: var(--line); color: var(--text); }
+    .kchip.filter .n { font-size: 12px; color: var(--muted); font-weight: 700; margin-left: 2px; }
+    .kchip.filter[aria-pressed="true"] { background: var(--lime); border-color: var(--lime); color: var(--ink); }
+    .kchip.filter[aria-pressed="true"] .n { color: var(--ink); opacity: .7; }
+    .kchip:focus-visible, .kchip-x:focus-visible { outline: 3px solid var(--blue); outline-offset: 2px; }
+    .kw-row { margin: 8px 0 2px; }
+    .kw-filter { margin: 0 0 12px; }
+    .filter-note { color: var(--muted); font-size: 14px; margin: -4px 2px 12px; }
+    .hero .kw-editor { margin: 4px 0 14px; }
+    .hero .field-label { margin-top: 2px; }
     .label-row .btn { flex: none; min-width: 84px; }
     input[type="text"] {
       flex: 1; width: 100%; min-height: 50px; border-radius: 14px; min-width: 0;
@@ -306,6 +340,8 @@
       <div class="hero">
         <h1>Map a venue as you walk.</h1>
         <p>Record a GPS trail, drop notes at highlights, save the walk on this iPhone, then reopen it to check each note against its coordinates.</p>
+        <span class="field-label" id="homeKwLabel">Keywords for this walk (optional)</span>
+        <div id="homeKw" aria-labelledby="homeKwLabel"></div>
         <div class="stack">
           <button class="btn big wide" id="btnBegin">Begin walk</button>
           <button class="btn secondary wide" id="btnDemo">Preview without GPS</button>
@@ -322,6 +358,8 @@
         </details>
       </div>
       <div class="section-head"><h2 class="section-label">Saved walks</h2><span id="savedCount" class="count"></span></div>
+      <div id="kwFilter" class="kw-filter" role="group" aria-label="Filter walks by keyword" hidden></div>
+      <p id="filterNote" class="filter-note" hidden aria-live="polite"></p>
       <div id="savedList"></div>
 
       <div class="section-head" style="margin-top:14px"><h2 class="section-label">Settings &amp; backup</h2></div>
@@ -397,6 +435,9 @@
         <input id="labelField" type="text" maxlength="80" placeholder="e.g. Neighborhood bar · Sep 22" enterkeyhint="done" autocomplete="off" />
         <button class="btn" id="btnSaveLabel">Save</button>
       </div>
+
+      <span class="field-label" id="reviewKwLabel">Keywords</span>
+      <div id="reviewKw" aria-labelledby="reviewKwLabel"></div>
 
       <h2 class="section-label">Highlights — tap to validate</h2>
       <div class="pin-list" id="pinList"></div>
@@ -511,6 +552,7 @@
       startedAt,
       stoppedAt: num(s.stoppedAt),
       demo: !!s.demo,
+      keywords: normKeywords(s.keywords),
       points: (Array.isArray(s.points) ? s.points : []).map((p) => normPoint(p, startedAt)).filter(Boolean),
       pins: (Array.isArray(s.pins) ? s.pins : []).map((p) => normPin(p, startedAt, seen)).filter(Boolean)
     });
@@ -1006,14 +1048,27 @@
 
   /* ===================== Home ===================== */
   function renderHome() {
-    const list = loadAll();
+    const all = loadAll();
     renderHomeAlerts();
-    renderResume(list);
+    renderResume(all);
     renderUnits();
+    renderFilterBar(all);
+    homeKw.render();
+    const list = all.filter(matchesFilter);
     const box = $("savedList");
-    $("savedCount").textContent = list.length ? list.length + (list.length === 1 ? " walk" : " walks") : "";
-    if (!list.length) {
+    const note = $("filterNote");
+    $("savedCount").textContent = all.length ? (homeFilter.length ? list.length + " of " + all.length : all.length) + (all.length === 1 ? " walk" : " walks") : "";
+    if (homeFilter.length) {
+      const names = allKeywords(all).filter((k) => homeFilter.includes(k.key)).map((k) => k.name);
+      note.hidden = false;
+      note.textContent = "Showing " + list.length + " of " + all.length + " walks tagged " + names.join(" + ");
+    } else { note.hidden = true; note.textContent = ""; }
+    if (!all.length) {
       box.innerHTML = '<div class="empty">Nothing saved yet. Begin a walk, drop a few notes, then give it a label.</div>';
+      return;
+    }
+    if (!list.length) {
+      box.innerHTML = '<div class="empty">No walks have all of these keywords.<br><button type="button" class="btn secondary small" data-filter-clear style="margin-top:10px">Show all walks</button></div>';
       return;
     }
     box.innerHTML = list.map((s) => {
@@ -1025,6 +1080,7 @@
         <h3>${escapeHtml(s.label || "Untitled walk")}${unfinished ? '<span class="badge amber">unfinished</span>' : ""}${s.demo ? '<span class="badge muted">preview</span>' : ""}</h3>
         <p>${escapeHtml(when)}</p>
         <p>${escapeHtml(fmtDuration(st.duration))} · ${escapeHtml(fmtDist(st.dist))} · ${s.pins.length} ${s.pins.length === 1 ? "note" : "notes"}</p>
+        ${kwChipsHtml(s.keywords)}
         <div class="walk-actions">
           <button class="btn secondary small open">Open</button>
           <button class="btn secondary small share">Send</button>
@@ -1033,6 +1089,7 @@
     }).join("");
   }
   $("savedList").addEventListener("click", (e) => {
+    if (e.target.closest("[data-filter-clear]")) { homeFilter = []; renderHome(); return; }
     const card = e.target.closest("[data-id]");
     if (!card) return;
     const id = card.dataset.id;
@@ -1106,7 +1163,7 @@
 
   /* ===================== Walk ===================== */
   function newSession(demo) {
-    return { id: uid(), label: "", startedAt: Date.now(), stoppedAt: null, demo: !!demo, points: [], pins: [] };
+    return { id: uid(), label: "", startedAt: Date.now(), stoppedAt: null, demo: !!demo, keywords: normKeywords(pendingKeywords), points: [], pins: [] };
   }
 
   function startWalk(demo, resume) {
@@ -1118,6 +1175,14 @@
     selectedPinId = null;
     pendingShare = null;
     const s = resume || newSession(demo);
+    if (!resume) {
+      // add anything still typed in the keyword box, then clear the picker for next time
+      const typed = $("homeKwInput") && $("homeKwInput").value;
+      if (typed && typed.trim()) s.keywords = normKeywords(s.keywords.concat(typed.split(",")));
+      if (s.keywords.length) rememberKeywords(s.keywords);
+      pendingKeywords = [];
+      if ($("homeKwInput")) $("homeKwInput").value = "";
+    }
     if (resume) { s.stoppedAt = null; geo.gapPending = true; }
     state.session = s;
     state.demo = !!s.demo;
@@ -1317,6 +1382,141 @@
     catch (_) { mic.rec = null; mic.active = false; setMicUi(false); toast("Mic is busy — try again"); }
   }
 
+  /* ===================== Keywords (tags) ===================== */
+  const KW_MAX_LEN = 30, KW_MAX = 20;
+  let homeFilter = [];               // lower-cased keywords; a walk must have all of them
+  let pendingKeywords = [];          // chosen on the home screen for the next walk
+
+  function cleanKeyword(k) { return String(k == null ? "" : k).replace(/\s+/g, " ").trim().slice(0, KW_MAX_LEN); }
+  function normKeywords(arr) {
+    const src = Array.isArray(arr) ? arr : (typeof arr === "string" ? arr.split(",") : []);
+    const out = [], seen = new Set();
+    src.forEach((k) => {
+      if (typeof k !== "string" && typeof k !== "number") return;
+      const c = cleanKeyword(k), key = c.toLowerCase();
+      if (c && !seen.has(key)) { seen.add(key); out.push(c); }
+    });
+    return out.slice(0, KW_MAX);
+  }
+  function hasKw(list, k) { const key = k.toLowerCase(); return list.some((x) => x.toLowerCase() === key); }
+
+  // Every keyword ever used, newest spelling wins (case-insensitive), with walk counts.
+  function allKeywords(list) {
+    const map = new Map();
+    const walks = (list || loadAll()).slice().sort((a, b) => (b.startedAt || 0) - (a.startedAt || 0));
+    walks.forEach((s) => s.keywords.forEach((k) => {
+      const key = k.toLowerCase();
+      if (!map.has(key)) map.set(key, { name: k, key, count: 0, last: s.startedAt || 0 });
+      map.get(key).count++;
+    }));
+    normKeywords(prefs.kwRecent).forEach((k) => {
+      const key = k.toLowerCase();
+      if (!map.has(key)) map.set(key, { name: k, key, count: 0, last: 0 });
+    });
+    return Array.from(map.values());
+  }
+  function rememberKeywords(kws) {
+    prefs.kwRecent = normKeywords(kws.concat(prefs.kwRecent || [])).slice(0, 60);
+    savePrefs();
+  }
+  function suggestKeywords(current, typed) {
+    const q = cleanKeyword(typed).toLowerCase();
+    return allKeywords()
+      .filter((k) => !hasKw(current, k.name) && (!q || k.key.includes(q)))
+      .sort((a, b) => (b.count - a.count) || (b.last - a.last) || a.name.localeCompare(b.name))
+      .slice(0, 12);
+  }
+
+  // Reusable editor: chips with ×, an input + Add button, and tap-to-add suggestions.
+  function mountKwEditor(root, getList, setList, idPrefix) {
+    root.classList.add("kw-editor");
+    root.innerHTML = `
+      <div class="kw-chips" role="list"></div>
+      <div class="kw-add">
+        <label class="sr-only" for="${idPrefix}Input">Add keyword</label>
+        <input id="${idPrefix}Input" type="text" maxlength="${KW_MAX_LEN}" placeholder="Add keyword, e.g. Casino" enterkeyhint="done" autocomplete="off" autocapitalize="words" />
+        <button type="button" class="btn secondary" data-kw-act="add">Add</button>
+      </div>
+      <div class="kw-suggest" aria-label="Suggested keywords"></div>`;
+    const input = root.querySelector("input");
+    const render = () => {
+      const list = getList();
+      root.querySelector(".kw-chips").innerHTML = list.length
+        ? list.map((k) => `<span class="kchip" role="listitem">${escapeHtml(k)}<button type="button" class="kchip-x" data-kw-del="${escapeHtml(k)}" aria-label="Remove keyword ${escapeHtml(k)}">×</button></span>`).join("")
+        : '<span class="kw-none">No keywords yet</span>';
+      const sug = suggestKeywords(list, input.value);
+      root.querySelector(".kw-suggest").innerHTML = sug.length
+        ? '<span class="kw-label">' + (input.value.trim() ? "Matches" : "Recent") + '</span>' +
+          sug.map((k) => `<button type="button" class="kchip add" data-kw-add="${escapeHtml(k.name)}" aria-label="Add keyword ${escapeHtml(k.name)}">+ ${escapeHtml(k.name)}</button>`).join("")
+        : "";
+    };
+    const add = (raw) => {
+      const list = getList().slice();
+      let added = 0;
+      String(raw).split(",").forEach((part) => {
+        const k = cleanKeyword(part);
+        if (k && !hasKw(list, k) && list.length < KW_MAX) { list.push(k); added++; }
+      });
+      if (added) setList(list);
+      input.value = "";
+      render();
+      return added;
+    };
+    root.addEventListener("click", (e) => {
+      const del = e.target.closest("[data-kw-del]");
+      const sug = e.target.closest("[data-kw-add]");
+      if (del) {
+        const k = del.getAttribute("data-kw-del");
+        setList(getList().filter((x) => x.toLowerCase() !== k.toLowerCase()));
+        render();
+      } else if (sug) {
+        add(sug.getAttribute("data-kw-add"));
+      } else if (e.target.closest("[data-kw-act=add]")) {
+        if (!input.value.trim()) { input.focus(); toast("Type a keyword first"); return; }
+        add(input.value);
+      }
+    });
+    input.addEventListener("keydown", (e) => {
+      if ((e.key === "Enter" || e.key === ",") && !e.isComposing) { e.preventDefault(); if (input.value.trim()) add(input.value); }
+    });
+    input.addEventListener("input", render);
+    return { render, input };
+  }
+
+  function kwChipsHtml(kws, cls) {
+    return kws.length ? `<div class="kw-row ${cls || ""}">` + kws.map((k) => `<span class="kchip static">${escapeHtml(k)}</span>`).join("") + "</div>" : "";
+  }
+
+  function matchesFilter(s) { return homeFilter.every((f) => s.keywords.some((k) => k.toLowerCase() === f)); }
+  function renderFilterBar(list) {
+    const bar = $("kwFilter");
+    const kws = allKeywords(list).filter((k) => k.count > 0)
+      .sort((a, b) => (b.count - a.count) || a.name.localeCompare(b.name));
+    homeFilter = homeFilter.filter((f) => kws.some((k) => k.key === f));   // drop stale selections
+    if (!kws.length) { bar.hidden = true; bar.innerHTML = ""; return; }
+    bar.hidden = false;
+    bar.innerHTML =
+      `<button type="button" class="kchip filter" data-filter="" aria-pressed="${!homeFilter.length}">All <span class="n">${list.length}</span></button>` +
+      kws.map((k) => `<button type="button" class="kchip filter" data-filter="${escapeHtml(k.key)}" aria-pressed="${homeFilter.includes(k.key)}">${escapeHtml(k.name)} <span class="n">${k.count}</span></button>`).join("");
+  }
+  $("kwFilter").addEventListener("click", (e) => {
+    const b = e.target.closest("[data-filter]");
+    if (!b) return;
+    const key = b.getAttribute("data-filter");
+    if (!key) homeFilter = [];
+    else if (homeFilter.includes(key)) homeFilter = homeFilter.filter((f) => f !== key);
+    else homeFilter = homeFilter.concat(key);
+    renderHome();
+  });
+
+  const homeKw = mountKwEditor($("homeKw"), () => pendingKeywords, (l) => { pendingKeywords = l; }, "homeKw");
+  const reviewKw = mountKwEditor($("reviewKw"), () => (state.review ? state.review.keywords : []), (l) => {
+    if (!state.review) return;
+    state.review.keywords = normKeywords(l);
+    rememberKeywords(state.review.keywords);
+    if (saveReview()) toast("Keywords saved", 1400);
+  }, "reviewKw");
+
   /* ===================== Review ===================== */
   function goHome() {
     if (sampling) sampling.cancel();
@@ -1334,6 +1534,8 @@
     pendingShare = null;
     if (!s.pins.some((p) => p.id === selectedPinId)) selectedPinId = s.pins[0] ? s.pins[0].id : null;
     $("labelField").value = s.label || "";
+    $("reviewKwInput").value = "";
+    reviewKw.render();
     renderReviewHeader();
     renderPinList();
     showValidate();
@@ -1772,7 +1974,7 @@
     drawSession(c, session, {
       unit: 3,
       headline: session.label || "Perimeter Notes",
-      sub: fmtTime(session.startedAt) + "  ·  " + fmtDist(st.dist) + "  ·  " + session.pins.length + " highlights",
+      sub: fmtTime(session.startedAt) + "  ·  " + fmtDist(st.dist) + "  ·  " + session.pins.length + " highlights" + (session.keywords.length ? "  ·  " + session.keywords.join(", ") : ""),
       footer: "Lime = GPS trail · amber = notes · ± GPS accuracy; indoors can drift 20–50 m",
       emptyText: "No location data"
     });
@@ -1808,11 +2010,13 @@
   button{margin-top:14px;width:100%;min-height:50px;border:0;border-radius:14px;font-weight:700;font-size:16px;background:#b6f34a;color:#0b0d10}
   ol{padding-left:22px} li{margin:0 0 12px} li span{color:#a9b6c5;font-size:14px} a{color:#6cb6ff}
   .note{color:#a9b6c5;font-size:13px}
+  .kw{display:flex;flex-wrap:wrap;gap:6px;margin:-6px 0 16px}.kw span{background:#22301a;border:1px solid #3f5a22;color:#dff7b8;border-radius:999px;padding:5px 12px;font-size:14px;font-weight:600}
 </style></head>
 <body>
 <div class="wrap">
   <h1>${escapeHtml(session.label || "Perimeter Notes")}</h1>
   <p class="sub">${escapeHtml(fmtTime(session.startedAt))} · ${escapeHtml(fmtDuration(st.duration))} · ${escapeHtml(fmtDist(st.dist))} walked · ${session.pins.length} highlights${st.area ? " · ≈ " + escapeHtml(fmtArea(st.area)) + " enclosed" : ""}</p>
+  ${session.keywords.length ? '<p class="kw">' + session.keywords.map((k) => '<span>' + escapeHtml(k) + '</span>').join("") + '</p>' : ""}
   <img alt="Venue diagram" src="${pngDataUrl}"/>
   <button onclick="var d=document.documentElement,f=d.requestFullscreen||d.webkitRequestFullscreen;if(f){try{f.call(d)}catch(e){alert('Full screen is not available here')}}else{alert('iPhone Safari has no full-screen mode for pages. Pinch to zoom the image instead.')}">Open full screen</button>
   <h2>Highlights</h2>
@@ -1835,7 +2039,7 @@
     const title = session.label || "Perimeter Notes";
     return {
       key: shareKey(session), at: Date.now(), title,
-      text: title + "\n" + session.pins.map((p, i) => (i + 1) + ". " + p.text + " (" + fmtCoord(p.lat) + ", " + fmtCoord(p.lng) + ")").join("\n"),
+      text: title + "\n" + (session.keywords.length ? "Keywords: " + session.keywords.join(", ") + "\n" : "") + session.pins.map((p, i) => (i + 1) + ". " + p.text + " (" + fmtCoord(p.lat) + ", " + fmtCoord(p.lng) + ")").join("\n"),
       png: new File([dataUrlToBlob(pngUrl)], slug(session.label) + "-diagram.png", { type: "image/png" }),
       html: new File([html], slug(session.label) + "-fullscreen.html", { type: "text/html" })
     };
@@ -1898,6 +2102,7 @@
     const body = [
       subject,
       "Completed " + fmtTime(session.stoppedAt || session.startedAt) + " · " + fmtDuration(st.duration) + " · " + fmtDist(st.dist),
+      ...(session.keywords.length ? ["Keywords: " + session.keywords.join(", ")] : []),
       "",
       "Highlights:",
       ...session.pins.map((p, i) => `${i + 1}. ${p.text}\n   ${fmtCoord(p.lat)}, ${fmtCoord(p.lng)} (${fmtAcc(p.acc)})\n   ${mapsUrl(p)}`),
@@ -1935,6 +2140,7 @@
       let added = 0;
       incoming.forEach((s) => { if (!have.has(s.id)) { list.push(s); have.add(s.id); added++; } });
       list.sort((a, b) => (b.startedAt || 0) - (a.startedAt || 0));
+      // keywords travel inside each walk record; nothing else needed for suggestions
       if (saveAll(list)) toast("Imported " + added + " walk" + (added === 1 ? "" : "s") + (incoming.length - added ? " · " + (incoming.length - added) + " already here" : ""));
       renderHome();
     };
