@@ -3,7 +3,7 @@
    Other same-origin files: stale-while-revalidate. Bump VERSION to drop old caches.
    Cross-origin requests (OSM street tiles, geocoding) are never touched or cached here; they
    use only the browser HTTP cache, as the OSM tile usage policy expects. */
-const VERSION = "b86810673e";
+const VERSION = "bf45181645";
 const CACHE = "perimeter-notes-" + VERSION;
 const CORE = ["./", "./index.html", "./manifest.webmanifest", "./icon-192.png", "./icon-512.png", "./apple-touch-icon.png"];
 const NET_TIMEOUT = 4000;

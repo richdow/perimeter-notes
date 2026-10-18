@@ -275,7 +275,7 @@
     .hero .kw-editor { margin: 4px 0 14px; }
     .hero .field-label { margin-top: 2px; }
     .label-row .btn { flex: none; min-width: 84px; }
-    input[type="text"], input[type="search"] {
+    input[type="text"], input[type="search"], input[type="password"] {
       flex: 1; width: 100%; min-height: 50px; border-radius: 14px; min-width: 0;
       background: var(--panel-2); border: 1px solid var(--line);
       padding: 0 14px; outline: none; font-size: 16px;
@@ -377,6 +377,41 @@
     .about .danger-zone { border-color: #63282a; }
     .about .danger-zone .btn { margin-top: 6px; }
     .about-foot { margin: 4px 2px 8px; }
+    /* ---------- groups ---------- */
+    .group-card { display: flex; align-items: center; gap: 10px; background: var(--panel); border: 1px solid var(--line); border-radius: 16px; padding: 12px 12px 12px 14px; margin-bottom: 10px; cursor: pointer; }
+    .group-card:active { filter: brightness(1.1); }
+    .group-card h3 { margin: 0 0 3px; font-size: 17px; overflow-wrap: anywhere; }
+    .group-card p { margin: 0; font-size: 13px; color: var(--muted); }
+    .gc-main { flex: 1; min-width: 0; }
+    .groups-actions { margin-bottom: 0; }
+    .groups-note { margin-top: 8px; }
+    .badge.shared { background: #1f2e10; color: var(--lime); border: 1px solid #3f5a22; }
+    .walk-card p.walk-author { color: #c9d4e0; font-size: 13px; margin-bottom: 2px; }
+    .code-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+    .code-row b { font-size: 26px; letter-spacing: .08em; color: var(--lime); }
+    .group-members { font-size: 14px; color: #c9d4e0; margin: 10px 0 0; }
+    .group-invite, .group-settings { margin-bottom: 12px; }
+    .toggle-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 48px; font-size: 15px; }
+    .toggle-row + .toggle-row { border-top: 1px solid var(--line); }
+    .toggle-row input { -webkit-appearance: none; appearance: none; width: 52px; height: 32px; border-radius: 999px; background: var(--panel-3); border: 1px solid var(--line); position: relative; flex: none; transition: background .15s; }
+    .toggle-row input::after { content: ""; position: absolute; top: 3px; left: 3px; width: 24px; height: 24px; border-radius: 50%; background: #c9d4e0; transition: transform .15s; }
+    .toggle-row input:checked { background: var(--lime); border-color: var(--lime); }
+    .toggle-row input:checked::after { transform: translateX(20px); background: var(--ink); }
+    .toggle-row input:focus-visible { outline: 3px solid var(--blue); outline-offset: 2px; }
+    .gf { display: grid; gap: 12px; }
+    .gf input { margin: 0; }
+    .muted-note { font-weight: 500; color: #7f8c9b; }
+    .gf-error { margin: 0; background: #301616; color: #ffb8b8; border-radius: 12px; padding: 10px 12px; font-weight: 600; font-size: 14px; }
+    .share-box { margin-bottom: 16px; }
+    .share-on { display: flex; align-items: center; gap: 10px; background: #18220f; border: 1px solid #3f5a22; border-radius: 14px; padding: 10px 10px 10px 14px; }
+    .share-on > div { flex: 1; min-width: 0; }
+    .share-on b { display: block; font-size: 15px; color: var(--lime); }
+    .share-on span { font-size: 13px; color: #c9d4e0; }
+    .share-pick { display: flex; flex-wrap: wrap; gap: 8px; }
+    .share-box .tiny { margin-top: 6px; }
+    .hud span.sync { color: var(--ink); background: var(--lime); border-color: var(--lime); }
+    .map-groups { position: absolute; left: 12px; bottom: calc(152px + var(--safe-b)); background: rgba(28,34,43,.92); }
+    .map-groups[aria-pressed="false"] { color: var(--muted); }
     @media (prefers-reduced-motion: reduce) {
       *, *::before, *::after { animation: none !important; transition: none !important; }
     }
@@ -436,6 +471,14 @@
       <button type="button" class="btn secondary wide map-open" id="btnMap" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" aria-hidden="true"><path d="M9 4 3 6v14l6-2 6 2 6-2V4l-6 2-6-2zM9 4v14M15 6v14"/></svg>Map of all walks</button>
       <div id="savedList"></div>
 
+      <div class="section-head" style="margin-top:14px"><h2 class="section-label">Groups</h2><span id="groupsCount" class="count"></span></div>
+      <div id="groupsList"></div>
+      <div class="grid-2 groups-actions">
+        <button class="btn secondary" id="btnGroupNew">Create group</button>
+        <button class="btn secondary" id="btnGroupJoin">Join group</button>
+      </div>
+      <p class="tiny groups-note">Share chosen walks with friends using a group code + PIN. Walks you don't share stay on this phone.</p>
+
       <div class="section-head" style="margin-top:14px"><h2 class="section-label">Settings &amp; backup</h2></div>
       <div class="card">
         <div class="row"><span>Units</span>
@@ -469,6 +512,7 @@
         <span id="hudPins">0 pins</span>
         <span id="hudMode" class="mode" hidden>preview</span>
         <span id="hudOffline" class="offline" hidden>Offline · still recording</span>
+        <span id="hudSync" class="sync" hidden></span>
       </div>
       <div id="walkBanner" class="banner" hidden role="status" aria-live="polite"></div>
       <div class="legend" aria-hidden="true"><span><i style="background:#b6f34a"></i>trail</span><span><i style="background:#ffbf47"></i>notes</span><span><i style="background:#6cb6ff"></i>you ± accuracy</span></div>
@@ -538,6 +582,9 @@
         <p class="tiny addr-attr" id="addrAttr"></p>
       </div>
 
+      <span class="field-label" id="shareLabel" hidden>Groups</span>
+      <div id="shareBox" class="share-box" hidden></div>
+
       <span class="field-label" id="reviewKwLabel">Keywords</span>
       <div id="reviewKw" aria-labelledby="reviewKwLabel"></div>
 
@@ -579,13 +626,13 @@
     <main class="home-body about">
       <div class="card">
         <h2>The short version</h2>
-        <p>Perimeter Notes is a free, simple web page. There are no accounts and no server of ours. Your walks are saved only in Safari on <b>your own iPhone</b>. Nobody else can see them, including the person who made this app.</p>
-        <p>No analytics, no ads, no cookies, no tracking. No AI and no paid services.</p>
+        <p>Perimeter Notes is a free, simple web page. There are no accounts. Your walks are saved only in Safari on <b>your own iPhone</b>. Nobody else can see them, including the person who made this app, unless you choose to <b>share a walk to a group</b>.</p>
+        <p>No analytics, no ads, no cookies, no tracking. No AI and no paid services (group sync runs on Cloudflare's free plan).</p>
       </div>
 
       <div class="card">
         <h2>What stays on your phone</h2>
-        <p>Walks, GPS trails, pins and notes, labels, keywords, addresses and settings are all kept in this site's storage in Safari on this iPhone. They only leave it if <b>you</b> send them with Send diagram, Mail draft or Export backup.</p>
+        <p>Walks, GPS trails, pins and notes, labels, keywords, addresses and settings are all kept in this site's storage in Safari on this iPhone. They only leave it if <b>you</b> share a walk to a group, or send it with Send diagram, Mail draft or Export backup.</p>
       </div>
 
       <div class="card">
@@ -598,6 +645,17 @@
           <li><b>Only when you tap them:</b> Open in Maps sends that pin's coordinates to Apple Maps. Send diagram and Mail draft share what you choose, with whoever you choose.</li>
         </ul>
         <p>Those services see your IP address like any website does. Recording a walk itself needs no internet at all.</p>
+      </div>
+
+      <div class="card">
+        <h2>Groups (optional)</h2>
+        <ul>
+          <li>Walks are personal by default. A walk goes to a group only when you tap <b>Share to …</b> on it, or turn on <b>Auto-share my new walks</b> for a group.</li>
+          <li>Shared walks (trail, pins and notes, label, keywords, address) plus each member's nickname are stored on <b>Cloudflare</b>, in the app creator's (Richard's) Cloudflare account. No email or real name is asked for.</li>
+          <li><b>Anyone with the group code and PIN can join, see and edit that group's walks.</b> Only share the PIN with people you trust. The group's creator can change the PIN, which signs everyone else out.</li>
+          <li>The Cloudflare account holder could technically access the stored group data. The PIN is stored only as a salted, secret-keyed hash, wrong PINs are rate-limited, and the server doesn't log walk contents. Cloudflare also sees your IP address, like any website.</li>
+          <li><b>To stop sharing:</b> open a walk and tap Unshare, or open the group and tap Leave group. The group's creator can tap Delete group to erase all of its walks from the server. Delete all data on this phone (below) only clears this phone, so leave or delete groups first if you want shared walks gone.</li>
+        </ul>
       </div>
 
       <div class="card">
@@ -621,7 +679,7 @@
 
       <div class="card danger-zone">
         <h2>Delete everything</h2>
-        <p>Erases all walks, notes, keywords, addresses and settings from this iPhone, plus the app's offline copy. This can't be undone, so export a backup first if you might want them.</p>
+        <p>Erases all walks, notes, keywords, addresses, groups and settings from this iPhone, plus the app's offline copy. Walks already shared to a group stay in that group (leave or delete the group first). This can't be undone, so export a backup first if you might want them.</p>
         <button class="btn danger wide" id="btnDeleteAll">Delete all data on this phone</button>
       </div>
 
@@ -629,12 +687,71 @@
         <h2>Credits</h2>
         <ul>
           <li>Addresses and street map: © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap contributors</a>, available under the Open Database License (ODbL).</li>
+          <li>Group sync: Cloudflare Workers and Durable Objects (free plan).</li>
           <li>Fallback address lookup: <a href="https://www.bigdatacloud.com/" target="_blank" rel="noopener">BigDataCloud</a> (free client-side reverse geocoding).</li>
           <li>Country and state borders: <a href="https://www.naturalearthdata.com/" target="_blank" rel="noopener">Natural Earth</a> (public domain).</li>
         </ul>
       </div>
 
       <p class="tiny about-foot">Provided as-is with no warranty, for personal notes. GPS can be inaccurate, especially indoors (often 20–50 m off), so don't rely on it for anything safety-critical, legal or official.</p>
+    </main>
+  </section>
+
+  <!-- ================= GROUP ================= -->
+  <section id="group" class="screen" aria-label="Group">
+    <header class="topbar">
+      <button class="btn ghost small" id="btnGroupBack" aria-label="Back to home">‹ Home</button>
+      <div class="brand" style="flex:1;justify-content:center"><span id="groupTitle" class="ttl">Group</span></div>
+      <div id="groupChip" class="chip">…</div>
+    </header>
+    <main class="home-body">
+      <div id="groupAlert"></div>
+      <div class="card group-invite">
+        <span class="field-label">Group code</span>
+        <div class="code-row"><b id="groupCode" class="mono"></b><button type="button" class="btn secondary small" id="btnGroupInvite">Share invite</button></div>
+        <p class="tiny">The invite link fills in the code only. Give people the PIN yourself.</p>
+        <p id="groupMembers" class="group-members"></p>
+      </div>
+      <div class="card group-settings">
+        <label class="toggle-row"><span>Auto-share my new walks here</span><input type="checkbox" id="groupAuto" /></label>
+        <label class="toggle-row"><span>Show this group's walks on the all-walks map</span><input type="checkbox" id="groupOnMap" /></label>
+        <p class="tiny" id="groupMe"></p>
+      </div>
+      <div class="section-head"><h2 class="section-label">Group walks</h2><span id="groupCount" class="count"></span></div>
+      <label for="groupSearch" class="sr-only">Search group walks</label>
+      <input id="groupSearch" class="search" type="search" placeholder="Search place, label, keyword, author" autocomplete="off" hidden />
+      <div id="groupKw" class="kw-filter" role="group" aria-label="Filter group walks by keyword" hidden></div>
+      <button type="button" class="btn secondary wide map-open" id="btnGroupMap">Map with group walks</button>
+      <div id="groupWalks"></div>
+      <div class="card gap-top">
+        <button type="button" class="btn secondary wide" id="btnGroupSync">Sync now</button>
+        <div id="ownerBox" class="grid-2 gap-top" hidden>
+          <button type="button" class="btn secondary" id="btnGroupPin">Change PIN</button>
+          <button type="button" class="btn danger" id="btnGroupDelete">Delete group</button>
+        </div>
+        <button type="button" class="btn danger wide gap-top" id="btnGroupLeave">Leave group</button>
+      </div>
+    </main>
+  </section>
+
+  <!-- ================= CREATE / JOIN GROUP ================= -->
+  <section id="groupForm" class="screen" aria-label="Create or join a group">
+    <header class="topbar">
+      <button class="btn ghost small" id="gfBack" aria-label="Back to home">‹ Home</button>
+      <div class="brand" style="flex:1;justify-content:center"><span id="groupFormTitle" class="ttl">Join a group</span></div>
+      <span style="width:72px" aria-hidden="true"></span>
+    </header>
+    <main class="home-body">
+      <form id="gfForm" class="card gf" novalidate autocomplete="off">
+        <div id="gfNameRow"><label class="field-label" for="gfName">Group name</label><input id="gfName" type="text" maxlength="60" placeholder="e.g. Casino crew" /></div>
+        <div id="gfCodeRow"><label class="field-label" for="gfCode">Group code</label><input id="gfCode" type="text" maxlength="12" placeholder="ABCD-EFGH" class="mono" autocapitalize="characters" spellcheck="false" /></div>
+        <div><label class="field-label" for="gfNick">Your nickname <span class="muted-note">(others in the group see this)</span></label><input id="gfNick" type="text" maxlength="32" placeholder="e.g. Rich" /></div>
+        <div><label class="field-label" for="gfPin">Group PIN</label><input id="gfPin" type="password" maxlength="64" autocomplete="off" placeholder="4+ digits or a 6+ character passphrase" /></div>
+        <div id="gfPin2Row"><label class="field-label" for="gfPin2">PIN again</label><input id="gfPin2" type="password" maxlength="64" autocomplete="off" /></div>
+        <p id="gfError" class="gf-error" role="alert" hidden></p>
+        <button type="submit" class="btn big wide" id="gfSubmit">Join group</button>
+        <p class="tiny">Shared walks are stored on Cloudflare, in the app creator's account. Anyone with the group code and PIN can see and edit the group's walks. Walks you don't share never leave this phone. Details in About &amp; privacy.</p>
+      </form>
     </main>
   </section>
 
@@ -655,6 +772,7 @@
         <button type="button" class="btn secondary" id="mapZoomOut" aria-label="Zoom out">−</button>
       </div>
       <div id="mapNote" class="map-note" role="status" aria-live="polite" hidden></div>
+      <button type="button" class="btn secondary small map-groups" id="btnMapGroups" aria-pressed="true" hidden>Group walks on</button>
       <button type="button" class="btn secondary small map-streets" id="btnStreets" aria-pressed="true">Streets on</button>
       <button type="button" class="btn secondary small map-fit" id="btnFitAll">Fit all walks</button>
       <div class="map-attr">Map data &amp; streets © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap contributors</a> · Borders: Natural Earth · <a href="https://www.openstreetmap.org/fixthemap" target="_blank" rel="noopener">Fix the map</a></div>
@@ -793,6 +911,7 @@
   let lastSaveFailed = false;
   function saveAll(list) {
     try {
+      stampShared(list);    // groups: stamp edits to shared walks + queue them for sync
       localStorage.setItem(STORE, JSON.stringify(list));
       lastSaveFailed = false;
       gcMaybeWork = true;   // geocoder: new or changed walks may need an address
@@ -810,7 +929,11 @@
     if (i >= 0) list[i] = session; else list.unshift(session);
     return saveAll(list);
   }
-  function remove(id) { return saveAll(loadAll().filter((s) => s.id !== id)); }
+  function remove(id) {
+    const list = loadAll();
+    onWalkRemoved(list.find((s) => s.id === id));   // groups: deleting a shared walk removes it from the group
+    return saveAll(list.filter((s) => s.id !== id));
+  }
 
   const prefs = (function () {
     let p = {};
@@ -938,12 +1061,13 @@
   }
 
   /* ===================== Screens + viewport (iOS keyboard / dvh) ===================== */
-  const screens = { home: $("home"), walk: $("walk"), review: $("review"), map: $("mapScreen"), about: $("about") };
+  const screens = { home: $("home"), walk: $("walk"), review: $("review"), map: $("mapScreen"), about: $("about"), group: $("group"), groupForm: $("groupForm") };
   function current() { return Object.keys(screens).find((k) => screens[k].classList.contains("on")); }
   function show(name) {
     Object.values(screens).forEach((el) => el.classList.remove("on"));
     screens[name].classList.add("on");
     requestAnimationFrame(redraw);
+    onScreenChange(name);
   }
   function fitViewport() {
     const vv = window.visualViewport;
@@ -1317,8 +1441,9 @@
 
   /* ===================== Home ===================== */
   function renderHome() {
-    const all = loadAll();
+    const all = loadAll().filter(isPersonal);     // other members' group walks live on the Groups screen
     renderHomeAlerts();
+    renderGroupsHome();
     renderResume(all);
     renderUnits();
     renderFilterBar(all);
@@ -1363,7 +1488,7 @@
       return `
       <article class="walk-card" data-id="${escapeHtml(s.id)}">
         <div class="card-head">
-          <h3>${escapeHtml(s.label || "Untitled walk")}${unfinished ? '<span class="badge amber">unfinished</span>' : ""}${s.demo ? '<span class="badge muted">preview</span>' : ""}</h3>
+          <h3>${escapeHtml(s.label || "Untitled walk")}${unfinished ? '<span class="badge amber">unfinished</span>' : ""}${s.demo ? '<span class="badge muted">preview</span>' : ""}${s.group && groupById(s.group.gid) ? '<span class="badge shared">shared · ' + escapeHtml(groupById(s.group.gid).name) + (isPending(s.group.gid, s.id) ? " · pending" : "") + '</span>' : ""}</h3>
           <div class="walk-dist" aria-label="${escapeHtml(fmtDist(st.dist))} walked in ${escapeHtml(fmtDuration(st.duration))}"><b>${escapeHtml(fmtDist(st.dist))}</b><b class="walk-time">${escapeHtml(fmtDuration(st.duration))}</b></div>
         </div>
         ${(() => { const a = addressStatus(s); return a.text ? `<p class="walk-place${a.pending ? " pending" : ""}">${escapeHtml(a.text)}</p>` : ""; })()}
@@ -1475,6 +1600,7 @@
       if (s.keywords.length) rememberKeywords(s.keywords);
       pendingKeywords = [];
       if ($("homeKwInput")) $("homeKwInput").value = "";
+      autoShareFor(s);                 // groups: "auto-share new walks" (live updates while recording)
     }
     if (resume) {
       s.stoppedAt = null;
@@ -1520,6 +1646,7 @@
     $("hudDist").textContent = fmtDist(state.dist);
     $("hudPts").textContent = s.points.length + (s.points.length === 1 ? " pt" : " pts");
     $("hudPins").textContent = s.pins.length + (s.pins.length === 1 ? " pin" : " pins");
+    renderHudSync();
   }
 
   function checkpoint(force) {
@@ -2121,6 +2248,599 @@
     setTimeout(go, wait);
   };
 
+  /* ===================== Groups: shared walks (Cloudflare Worker) ===================== */
+  // Walks are personal unless you share one to a group (or turn on auto-share). Shared walks are
+  // stored by the groups API (a Cloudflare Worker + Durable Object per group). Sync is offline-first:
+  // every change to a shared walk is queued in localStorage and pushed when online; other members'
+  // changes are pulled on a timer that runs fast only while a group view or shared walk is open.
+  // Conflicts: newest edit wins per field (label, keywords, address, trail…); pins merge by id and
+  // pin deletions travel as markers so they reach everyone.
+  const API_BASE = (typeof window.PN_API === "string" && window.PN_API) || "https://perimeter-notes-groups.dowdyrichard.workers.dev";
+  const GROUPS_KEY = "perimeter-notes.groups";
+  const SYNCQ_KEY = "perimeter-notes.syncq";
+  const SHARE_FIELDS = ["label", "startedAt", "stoppedAt", "demo", "keywords", "address", "points", "pauses"];
+  const SYNC = { FAST: 12000, MAP: 30000, HOME: 60000, IDLE: 180000, PUSH_DEBOUNCE: 1500, LIVE_PUSH_MIN: 10000, MAX_BACKOFF: 300000, TIMEOUT: 15000 };
+
+  var groups = (function () {
+    try { const g = JSON.parse(localStorage.getItem(GROUPS_KEY) || "[]"); return Array.isArray(g) ? g.filter((x) => x && x.gid && x.token) : []; } catch (_) { return []; }
+  })();
+  var syncq = (function () {
+    try { const q = JSON.parse(localStorage.getItem(SYNCQ_KEY) || "[]"); return Array.isArray(q) ? q.filter((x) => x && x.gid && x.id) : []; } catch (_) { return []; }
+  })();
+  function saveGroups() { try { localStorage.setItem(GROUPS_KEY, JSON.stringify(groups)); } catch (_) {} }
+  function saveQ() { try { localStorage.setItem(SYNCQ_KEY, JSON.stringify(syncq)); } catch (_) {} }
+  function groupById(gid) { return groups && groups.find((g) => g.gid === gid); }
+  let qv = 0;
+  function enqueue(gid, id, op) {
+    syncq = syncq.filter((x) => !(x.gid === gid && x.id === id));
+    syncq.push({ gid, id, op, v: Date.now() * 1000 + (++qv % 1000) });
+    saveQ();
+    schedulePush(gid);
+  }
+  const pendingCount = (gid) => syncq.filter((x) => x.gid === gid).length;
+  const isPending = (gid, id) => syncq.some((x) => x.gid === gid && x.id === id);
+  const isReceived = (s) => !!(s.group && s.group.gid && !s.group.mine);
+  const isPersonal = (s) => !isReceived(s);
+  const fmtCode = (c) => String(c || "").replace(/^(.{4})(.+)$/, "$1-$2");
+
+  /* ---------- change detection (runs inside saveAll) ---------- */
+  function canon(v) {
+    if (v === null || v === undefined) return "";
+    if (Array.isArray(v)) return "[" + v.map(canon).join(",") + "]";
+    if (typeof v === "object") return "{" + Object.keys(v).filter((k) => v[k] != null && k !== "u").sort().map((k) => k + ":" + canon(v[k])).join(",") + "}";
+    return typeof v === "number" ? String(+v.toFixed(7)) : JSON.stringify(v);
+  }
+  function hashVal(v) {
+    const str = canon(v);
+    let h = 0x811c9dc5;
+    for (let i = 0; i < str.length; i++) { h ^= str.charCodeAt(i); h = Math.imul(h, 0x01000193); }
+    return (h >>> 0).toString(36) + "." + str.length.toString(36);
+  }
+  const pinCore = (p) => ({ id: p.id, lat: p.lat, lng: p.lng, acc: p.acc, t: p.t, text: p.text, n: p.n });
+  function newSync() { return { ft: {}, fh: {}, ph: {}, tomb: [] }; }
+  function rehash(s) {
+    const sy = s.sync || (s.sync = newSync());
+    sy.ft = sy.ft || {}; sy.tomb = sy.tomb || [];
+    sy.fh = {}; SHARE_FIELDS.forEach((f) => { sy.fh[f] = hashVal(s[f]); });
+    sy.ph = {}; s.pins.forEach((p) => { sy.ph[p.id] = hashVal(pinCore(p)); });
+  }
+  // Called by saveAll(): stamp the edit time of every changed field / pin of shared walks and queue a push.
+  function stampShared(list) {
+    if (!groups || !groups.length) return;
+    const now = Date.now();
+    for (const s of list) {
+      const gid = s.group && s.group.gid;
+      if (!gid || !groupById(gid)) continue;
+      if (!s.points.length && !s.pins.length) continue;            // nothing worth sharing yet
+      const sy = s.sync || (s.sync = newSync());
+      sy.ft = sy.ft || {}; sy.fh = sy.fh || {}; sy.ph = sy.ph || {}; sy.tomb = sy.tomb || [];
+      let changed = false;
+      for (const f of SHARE_FIELDS) {
+        const h = hashVal(s[f]);
+        if (sy.fh[f] !== h) { sy.fh[f] = h; sy.ft[f] = Math.max(now, (sy.ft[f] || 0) + 1); changed = true; }
+      }
+      const seen = new Set();
+      for (const p of s.pins) {
+        seen.add(p.id);
+        const h = hashVal(pinCore(p));
+        if (sy.ph[p.id] !== h) { sy.ph[p.id] = h; p.u = Math.max(now, (p.u || 0) + 1); changed = true; }
+      }
+      for (const id of Object.keys(sy.ph)) if (!seen.has(id)) { delete sy.ph[id]; sy.tomb.push({ id, u: now }); changed = true; }
+      if (changed) enqueue(gid, s.id, "up");
+    }
+  }
+  // Called by remove(): deleting a shared walk removes it from the group for everyone.
+  function onWalkRemoved(s) {
+    if (s && s.group && s.group.gid && groupById(s.group.gid) && s.sync) enqueue(s.group.gid, s.id, "del");
+  }
+
+  /* ---------- applying server data ---------- */
+  function payloadOf(s) {
+    const sy = s.sync || newSync();
+    return {
+      id: s.id, ft: sy.ft || {},
+      label: String(s.label || "").slice(0, 120), startedAt: s.startedAt, stoppedAt: s.stoppedAt == null ? null : s.stoppedAt, demo: !!s.demo,
+      keywords: (s.keywords || []).slice(0, 30).map((k) => String(k).slice(0, 40)), address: s.address || null,
+      points: s.points.slice(-8000).map((p) => {
+        const q = { lat: p.lat, lng: p.lng, t: p.t };
+        if (p.acc != null) q.acc = p.acc; if (p.heading != null) q.heading = p.heading; if (p.gap) q.gap = true;
+        return q;
+      }),
+      pauses: Array.isArray(s.pauses) ? s.pauses.slice(0, 1000) : [],
+      pins: s.pins.slice(0, 300).map((p) => {
+        const q = { id: p.id, lat: p.lat, lng: p.lng, t: p.t, text: String(p.text || "").slice(0, 500), u: p.u || 0 };
+        if (p.acc != null) q.acc = p.acc; if (p.n != null) q.n = p.n;
+        return q;
+      }).concat((sy.tomb || []).map((t) => ({ id: t.id, del: true, u: t.u })))
+    };
+  }
+  const liveCopy = (id) => (state.session && state.session.id === id ? state.session : (state.review && state.review.id === id ? state.review : null));
+  // Merge a walk from the server into the local list. Returns true if something visible changed.
+  function applyRemote(list, rw, g) {
+    let i = list.findIndex((x) => x.id === rw.id);
+    const live = liveCopy(rw.id);
+    let s = live || (i >= 0 ? list[i] : null);
+    if (s && s.group && s.group.gid && s.group.gid !== g.gid) return false;   // shared to another group
+    const fresh = !s;
+    if (fresh) s = { id: rw.id, label: "", keywords: [], points: [], pins: [] };
+    const before = fresh ? "" : hashVal([SHARE_FIELDS.map((f) => s[f]), s.pins.map(pinCore)]);
+    const sy = s.sync || (s.sync = newSync());
+    sy.ft = sy.ft || {}; sy.tomb = sy.tomb || [];
+    const rft = rw.ft || {};
+    for (const f of SHARE_FIELDS) if (f in rw && (fresh || (rft[f] || 0) > (sy.ft[f] || 0))) { s[f] = rw[f]; sy.ft[f] = rft[f] || 0; }
+    const tomb = new Map(sy.tomb.map((t) => [t.id, t.u]));
+    const byId = new Map(s.pins.map((p) => [p.id, p]));
+    for (const rp of rw.pins || []) {
+      const lp = byId.get(rp.id);
+      if (!rp.del && tomb.has(rp.id) && tomb.get(rp.id) >= (rp.u || 0)) continue;   // we deleted it more recently
+      if (lp && (rp.u || 0) <= (lp.u || 0)) continue;
+      if (rp.del) byId.delete(rp.id); else byId.set(rp.id, Object.assign({}, rp));
+    }
+    s.pins = [...byId.values()];
+    sy.tomb = sy.tomb.filter((t) => !(rw.pins || []).some((rp) => rp.id === t.id && rp.del && (rp.u || 0) >= t.u));
+    const author = rw.author || {};
+    const mine = author.id ? author.id === g.memberId : !!(s.group && s.group.mine);
+    s.group = { gid: g.gid, mine, by: author.nick || (s.group && s.group.by) || "", byId: author.id || "", editor: rw.editor || "", seq: rw.seq || 0 };
+    let out = s;
+    if (!live) { out = normalizeSession(s); out.sync = s.sync; }
+    rehash(out);
+    if (i >= 0) list[i] = out; else list.push(out);
+    return fresh || before !== hashVal([SHARE_FIELDS.map((f) => out[f]), out.pins.map(pinCore)]);
+  }
+  function applyRemoteDelete(list, id, g) {
+    const i = list.findIndex((x) => x.id === id);
+    if (i < 0) return false;
+    const s = liveCopy(id) || list[i];
+    if (!s.group || s.group.gid !== g.gid) return false;
+    if (syncq.some((x) => x.gid === g.gid && x.id === id && x.op === "up")) return false;   // our newer edit will bring it back
+    if (s.group.mine) { delete s.group; delete s.sync; list[i] = s; }                       // keep my own copy, just unshared
+    else { list.splice(i, 1); if (state.review && state.review.id === id) state.reviewGone = true; }
+    return true;
+  }
+  let applyingRemote = false;
+  function saveRemote(list) { applyingRemote = true; try { saveAll(list); } finally { applyingRemote = false; } }
+
+  /* ---------- network ---------- */
+  function api(method, path, body, g) {
+    if (navigator.onLine === false) return Promise.reject(Object.assign(new Error("You're offline"), { network: true }));
+    const ctl = typeof AbortController === "function" ? new AbortController() : null;
+    const timer = setTimeout(() => ctl && ctl.abort(), SYNC.TIMEOUT);
+    const headers = { "Content-Type": "application/json" };
+    if (g) headers.Authorization = "Bearer " + g.token;
+    return fetch(API_BASE + path, { method, headers, body: body ? JSON.stringify(body) : undefined, signal: ctl ? ctl.signal : undefined, cache: "no-store" })
+      .then((r) => r.json().catch(() => null).then((j) => {
+        if (!r.ok) { const e = new Error((j && j.message) || "Server error (" + r.status + ")"); e.status = r.status; e.code = j && j.error; e.body = j; throw e; }
+        return j;
+      }), (e) => { throw Object.assign(new Error(e && e.name === "AbortError" ? "The groups server didn't answer" : "Can't reach the groups server"), { network: true }); })
+      .finally(() => clearTimeout(timer));
+  }
+  let lastPushAt = 0;
+  async function pushGroup(g) {
+    for (let round = 0; round < 5; round++) {
+      const items = syncq.filter((x) => x.gid === g.gid).slice(0, 10);
+      if (!items.length) return;
+      const list = loadAll();
+      const ups = [], dels = [], sent = [];
+      let bytes = 0;
+      for (const it of items) {
+        if (it.op === "del") { dels.push(it.id); sent.push(it); continue; }
+        const s = liveCopy(it.id) || list.find((x) => x.id === it.id);
+        if (!s || !s.group || s.group.gid !== g.gid) { sent.push(it); continue; }      // gone or unshared meanwhile
+        const p = payloadOf(s), len = JSON.stringify(p).length;
+        if (ups.length && bytes + len > 550000) break;
+        ups.push(p); sent.push(it); bytes += len;
+      }
+      lastPushAt = Date.now();
+      const r = (ups.length || dels.length) ? await api("POST", "/v1/groups/" + g.gid + "/push", { upserts: ups, deletes: dels }, g) : { results: [] };
+      const list2 = loadAll();
+      let changed = false;
+      const errs = [];
+      for (const res of r.results || []) {
+        if (res.walk) changed = applyRemote(list2, res.walk, g) || changed;
+        else if (res.deleted && !dels.includes(res.id)) changed = applyRemoteDelete(list2, res.id, g) || changed;
+        else if (res.error) {
+          errs.push(res.message || res.error);
+          const s = liveCopy(res.id) || list2.find((x) => x.id === res.id);
+          if (s && s.group) s.group.error = res.message || res.error;
+        }
+      }
+      for (const res of r.results || []) if (res.walk) { const s = liveCopy(res.id) || list2.find((x) => x.id === res.id); if (s && s.group) delete s.group.error; }
+      saveRemote(list2);
+      syncq = syncq.filter((x) => !sent.some((y) => y.gid === x.gid && y.id === x.id && y.v === x.v));   // keep anything edited mid-flight
+      saveQ();
+      g.error = errs.length ? errs[0] : "";
+      if (changed) noteRemoteChange();
+    }
+  }
+  async function pullGroup(g) {
+    let list = null, changed = false;
+    for (let page = 0; page < 8; page++) {
+      const r = await api("GET", "/v1/groups/" + g.gid + "/pull?since=" + (g.cursor || 0), null, g);
+      list = list || loadAll();
+      (r.walks || []).forEach((w) => { changed = applyRemote(list, w, g) || changed; });
+      (r.deleted || []).forEach((id) => { changed = applyRemoteDelete(list, id, g) || changed; });
+      g.cursor = r.cursor;
+      if (r.group) {
+        g.name = r.group.name; g.code = r.group.code; g.members = r.group.members; g.walkCount = r.group.walkCount;
+        g.bytes = r.group.bytes; g.limits = r.group.limits;
+        if (r.group.me) { g.role = r.group.me.role; g.nick = r.group.me.nick; }
+      }
+      if (!r.more) break;
+    }
+    if (list && changed) saveRemote(list);
+    if (changed) noteRemoteChange();
+  }
+  async function syncGroup(g) {
+    if (g.revoked) return;
+    try {
+      await pushGroup(g);
+      await pullGroup(g);
+      g.lastSync = Date.now(); g.offline = false;
+      if (!pendingCount(g.gid)) g.error = "";
+    } catch (e) {
+      if (e.status === 401) g.revoked = "Your access ended: the PIN was changed, you were removed, or you left on another device. Join again with the current PIN.";
+      else if (e.status === 404) g.revoked = "This group was deleted by its creator.";
+      else if (e.network) g.offline = true;
+      else g.error = e.message;
+      throw e;
+    } finally { saveGroups(); }
+  }
+  let syncTimer = null, pushTimer = null, backoff = 0, syncing = null;
+  function syncDelay() {
+    const c = current();
+    if (state.session && state.session.group) return SYNC.FAST;
+    if (c === "group" || (c === "review" && state.review && state.review.group)) return SYNC.FAST;
+    if (c === "map" && prefs.mapGroups !== false) return SYNC.MAP;
+    if (c === "home") return SYNC.HOME;
+    return SYNC.IDLE;
+  }
+  function scheduleSync(ms) {
+    clearTimeout(syncTimer);
+    if (!groups.length || document.visibilityState === "hidden" || navigator.onLine === false) return;
+    syncTimer = setTimeout(syncAll, ms != null ? ms : syncDelay() + backoff);
+  }
+  function syncAll() {
+    if (syncing) return syncing;
+    clearTimeout(syncTimer);
+    syncing = (async () => {
+      let err = false;
+      for (const g of groups.slice()) { try { await syncGroup(g); } catch (_) { err = true; } }
+      backoff = err ? Math.min(SYNC.MAX_BACKOFF, Math.max(5000, backoff * 2)) : 0;
+    })().finally(() => { syncing = null; renderSyncUi(); scheduleSync(); });
+    return syncing;
+  }
+  function schedulePush(gid) {
+    renderSyncUi();
+    clearTimeout(pushTimer);
+    const live = state.session && state.session.group && state.session.group.gid === gid;
+    const wait = live ? Math.max(SYNC.PUSH_DEBOUNCE, SYNC.LIVE_PUSH_MIN - (Date.now() - lastPushAt)) : SYNC.PUSH_DEBOUNCE;
+    pushTimer = setTimeout(() => { if (navigator.onLine !== false && document.visibilityState !== "hidden") syncAll(); }, wait);
+  }
+  function onScreenChange() { if (groups && groups.length) scheduleSync(syncDelay() === SYNC.FAST ? 400 : undefined); }
+
+  /* ---------- status ---------- */
+  function groupStatus(g) {
+    const n = pendingCount(g.gid);
+    if (g.revoked) return { cls: "bad", text: g.revoked.startsWith("This group was deleted") ? "Group deleted" : "Access ended" };
+    if (navigator.onLine === false || g.offline) return { cls: "warn", text: n ? "Offline · " + n + " pending" : "Offline" };
+    if (g.error) return { cls: "bad", text: "Sync error" };
+    if (n) return { cls: "warn", text: n + " pending" };
+    if (!g.lastSync) return { cls: "", text: "Connecting…" };
+    return { cls: "good", text: "Synced" };
+  }
+  function walkSyncText(s) {
+    const g = s.group && groupById(s.group.gid);
+    if (!g) return "";
+    if (s.group.error) return "Not synced: " + s.group.error;
+    if (isPending(g.gid, s.id)) return navigator.onLine === false || g.offline ? "Waiting to sync (offline)" : "Syncing…";
+    if (!s.sync) return "Shares once it has a GPS point";
+    return g.lastSync ? "Synced" : "Connecting…";
+  }
+  let remoteChanged = false;
+  function noteRemoteChange() { remoteChanged = true; }
+  function renderSyncUi() {
+    const c = current();
+    const changed = remoteChanged; remoteChanged = false;
+    if (state.reviewGone && c === "review") { state.reviewGone = false; toast("This walk was removed from the group"); backFromReview(); return; }
+    if (c === "home") { if (changed) renderHome(); else renderGroupsHome(); }
+    if (c === "group") renderGroupScreen();
+    if (c === "map" && changed) { buildMapItems(); requestMapDraw(); }
+    if (c === "review" && state.review) {
+      renderShareBox();
+      if (changed) {
+        const typing = document.activeElement && /INPUT|TEXTAREA/.test(document.activeElement.tagName);
+        if (!typing) $("labelField").value = state.review.label || "";
+        renderReviewHeader(); renderPinList(); renderAddress(); reviewKw.render(); queueRedraw();
+      }
+    }
+    if (c === "walk") renderHudSync();
+  }
+  function renderHudSync() {
+    const el = $("hudSync"), s = state.session;
+    const g = s && s.group && groupById(s.group.gid);
+    el.hidden = !g;
+    if (g) el.textContent = g.name + " · " + (isPending(g.gid, s.id) ? (navigator.onLine === false ? "offline, will sync" : "syncing") : "synced");
+  }
+
+  /* ---------- home: group list ---------- */
+  function renderGroupsHome() {
+    const box = $("groupsList");
+    $("groupsCount").textContent = groups.length ? groups.length + (groups.length === 1 ? " group" : " groups") : "";
+    box.innerHTML = groups.map((g) => {
+      const st = groupStatus(g);
+      const mem = (g.members || []).length;
+      return `<article class="group-card" data-gid="${escapeHtml(g.gid)}" role="button" tabindex="0">
+        <div class="gc-main"><h3>${escapeHtml(g.name || "Group")}</h3>
+        <p>${mem ? mem + (mem === 1 ? " member" : " members") + " · " : ""}${g.walkCount != null ? g.walkCount + (g.walkCount === 1 ? " walk" : " walks") + " · " : ""}you're ${escapeHtml(g.nick || "")}${g.role === "owner" ? " (creator)" : ""}</p></div>
+        <span class="chip ${st.cls}">${escapeHtml(st.text)}</span></article>`;
+    }).join("");
+  }
+  $("groupsList").addEventListener("click", (e) => { const c = e.target.closest("[data-gid]"); if (c) openGroup(c.dataset.gid); });
+  $("groupsList").addEventListener("keydown", (e) => { const c = e.target.closest("[data-gid]"); if (c && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); openGroup(c.dataset.gid); } });
+
+  /* ---------- create / join ---------- */
+  let formMode = "create";
+  function openGroupForm(mode, code) {
+    formMode = mode;
+    $("groupFormTitle").textContent = mode === "create" ? "Create a group" : "Join a group";
+    $("gfNameRow").hidden = mode !== "create";
+    $("gfPin2Row").hidden = mode !== "create";
+    $("gfCodeRow").hidden = mode !== "join";
+    $("gfSubmit").textContent = mode === "create" ? "Create group" : "Join group";
+    $("gfError").hidden = true;
+    $("gfPin").value = ""; $("gfPin2").value = "";
+    if (mode === "join") $("gfCode").value = code ? fmtCode(String(code).toUpperCase().replace(/[^0-9A-Z]/g, "")) : "";
+    $("gfNick").value = $("gfNick").value || prefs.nick || "";
+    $("gfPin").placeholder = mode === "create" ? "4+ digits or a 6+ character passphrase" : "PIN from the group's creator";
+    show("groupForm");
+    setTimeout(() => { const f = mode === "create" ? $("gfName") : (code ? (prefs.nick ? $("gfPin") : $("gfNick")) : $("gfCode")); try { f.focus(); } catch (_) {} }, 60);
+  }
+  function formError(msg) { const el = $("gfError"); el.textContent = msg; el.hidden = false; }
+  function addGroup(r) {
+    const old = groupById(r.gid);
+    const g = Object.assign(old || { autoShare: false, onMap: true }, {
+      gid: r.gid, name: r.name, code: r.code, token: r.token, memberId: r.memberId, nick: r.me.nick, role: r.me.role,
+      cursor: 0, members: r.members, walkCount: r.walkCount, lastSync: 0, error: "", revoked: "", offline: false
+    });
+    if (!old) groups.push(g);
+    saveGroups();
+    return g;
+  }
+  $("gfForm").addEventListener("submit", (e) => {
+    e.preventDefault();
+    const nick = $("gfNick").value.trim(), pin = $("gfPin").value;
+    if (!nick) return formError("Choose a nickname so others know whose walks are whose.");
+    if (navigator.onLine === false) return formError("You're offline. Creating or joining a group needs a connection.");
+    let p;
+    if (formMode === "create") {
+      const name = $("gfName").value.trim();
+      if (!name) return formError("Give the group a name.");
+      if (/^\d+$/.test(pin) ? pin.length < 4 : pin.length < 6) return formError("Use at least 4 digits, or a passphrase of 6+ characters.");
+      if (pin !== $("gfPin2").value) return formError("The two PINs don't match.");
+      p = api("POST", "/v1/groups", { name, nick, pin });
+    } else {
+      const code = $("gfCode").value.replace(/[^0-9A-Za-z]/g, "");
+      if (code.length < 6) return formError("Enter the 8-character group code.");
+      if (!pin) return formError("Enter the group's PIN.");
+      p = api("POST", "/v1/join", { code, nick, pin });
+    }
+    $("gfSubmit").disabled = true;
+    $("gfError").hidden = true;
+    p.then((r) => {
+      prefs.nick = nick; savePrefs();
+      const g = addGroup(r);
+      $("gfPin").value = ""; $("gfPin2").value = "";
+      toast(formMode === "create" ? "Group created — share the code and tell people the PIN" : "Joined " + g.name, 3200);
+      openGroup(g.gid);
+      syncAll();
+    }).catch((err) => formError(err.message || "Something went wrong")).finally(() => { $("gfSubmit").disabled = false; });
+  });
+  $("gfBack").onclick = goHome;
+  $("btnGroupNew").onclick = () => openGroupForm("create");
+  $("btnGroupJoin").onclick = () => openGroupForm("join");
+
+  /* ---------- group screen ---------- */
+  let groupQuery = "", groupKwSel = [];
+  function openGroup(gid) {
+    const g = groupById(gid);
+    if (!g) { renderHome(); show("home"); return; }
+    if (state.groupOpen !== gid) { groupQuery = ""; groupKwSel = []; $("groupSearch").value = ""; }
+    state.groupOpen = gid;
+    renderGroupScreen();
+    show("group");
+    $("group").querySelector(".home-body").scrollTop = 0;
+  }
+  function groupWalks(gid) { return loadAll().filter((s) => s.group && s.group.gid === gid).sort((a, b) => (b.startedAt || 0) - (a.startedAt || 0)); }
+  function renderGroupScreen() {
+    const g = groupById(state.groupOpen);
+    if (!g) return;
+    const st = groupStatus(g);
+    $("groupTitle").textContent = g.name || "Group";
+    const chip = $("groupChip"); chip.className = "chip " + st.cls; chip.textContent = st.text;
+    $("groupAlert").innerHTML = g.revoked ? `<div class="alert bad"><strong>${escapeHtml(st.text)}</strong>${escapeHtml(g.revoked)}${g.revoked.startsWith("This group was deleted") ? "" : '<div class="grid-2"><button class="btn small" data-act="rejoin">Join again</button><button class="btn small secondary" data-act="forget">Remove from phone</button></div>'}${g.revoked.startsWith("This group was deleted") ? '<div class="grid-2"><button class="btn small secondary" data-act="forget">Remove from phone</button></div>' : ""}</div>`
+      : (g.error ? `<div class="alert"><strong>Sync problem</strong>${escapeHtml(g.error)}</div>` : "");
+    $("groupCode").textContent = fmtCode(g.code);
+    $("groupMembers").textContent = (g.members || []).length ? "Members: " + g.members.map((m) => m.nick + (m.role === "owner" ? " (creator)" : "") + (m.id === g.memberId ? " · you" : "")).join(", ") : "";
+    $("groupAuto").checked = !!g.autoShare;
+    $("groupOnMap").checked = g.onMap !== false;
+    $("groupMe").textContent = "You appear as “" + (g.nick || "") + "”." + (g.limits ? " Space used: " + Math.round((g.bytes || 0) / 1000) + " KB of " + Math.round(g.limits.bytes / 1e6) + " MB, " + (g.walkCount || 0) + " of " + g.limits.walks + " walks." : "");
+    $("ownerBox").hidden = g.role !== "owner";
+    // walks: search + keyword chips, same matching as the history list
+    const all = groupWalks(g.gid);
+    const kws = allKeywords(all).filter((k) => k.count > 0).sort((a, b) => (b.count - a.count) || a.name.localeCompare(b.name));
+    groupKwSel = groupKwSel.filter((k) => kws.some((x) => x.key === k));
+    $("groupKw").hidden = !kws.length;
+    $("groupKw").innerHTML = kws.length ? `<button type="button" class="kchip filter" data-gkw="" aria-pressed="${!groupKwSel.length}">All <span class="n">${all.length}</span></button>` +
+      kws.map((k) => `<button type="button" class="kchip filter" data-gkw="${escapeHtml(k.key)}" aria-pressed="${groupKwSel.includes(k.key)}">${escapeHtml(k.name)} <span class="n">${k.count}</span></button>`).join("") : "";
+    const words = groupQuery.toLowerCase().split(/\s+/).filter(Boolean);
+    const list = all.filter((s) => groupKwSel.every((k) => s.keywords.some((x) => x.toLowerCase() === k)) &&
+      words.every((w) => (searchText(s) + " " + (s.group.by || "")).toLowerCase().includes(w)));
+    $("groupSearch").hidden = all.length < 2 && !groupQuery;
+    $("groupCount").textContent = all.length ? (list.length !== all.length ? list.length + " of " : "") + all.length + (all.length === 1 ? " walk" : " walks") : "";
+    $("groupWalks").innerHTML = !all.length ? '<div class="empty">No shared walks yet. Open one of your walks and tap “Share to ' + escapeHtml(g.name) + '”, or turn on auto-share above.</div>'
+      : !list.length ? '<div class="empty">No group walks match.</div>'
+      : list.map((s) => {
+        const stt = pathStats(s), addr = addressStatus(s);
+        const sync = isPending(g.gid, s.id) ? '<span class="badge amber">pending</span>' : (s.group.error ? '<span class="badge amber">not synced</span>' : "");
+        return `<article class="walk-card" data-wid="${escapeHtml(s.id)}">
+          <div class="card-head"><h3>${escapeHtml(s.label || "Untitled walk")}${!s.stoppedAt ? '<span class="badge amber">in progress</span>' : ""}${sync}</h3>
+          <div class="walk-dist"><b>${escapeHtml(fmtDist(stt.dist))}</b><b class="walk-time">${escapeHtml(fmtDuration(stt.duration))}</b></div></div>
+          <p class="walk-author">by ${escapeHtml(s.group.mine ? "you" : (s.group.by || "someone"))}${s.group.editor && s.group.editor !== s.group.by ? " · edited by " + escapeHtml(s.group.editor) : ""}</p>
+          ${addr.text ? `<p class="walk-place${addr.pending ? " pending" : ""}">${escapeHtml(addr.text)}</p>` : ""}
+          <p>${escapeHtml(fmtTime(s.startedAt))} · ${s.pins.length} ${s.pins.length === 1 ? "note" : "notes"}</p>
+          ${kwChipsHtml(s.keywords)}
+        </article>`;
+      }).join("");
+  }
+  $("groupWalks").addEventListener("click", (e) => { const c = e.target.closest("[data-wid]"); if (c) openReview(c.dataset.wid, "group"); });
+  $("groupKw").addEventListener("click", (e) => {
+    const b = e.target.closest("[data-gkw]"); if (!b) return;
+    const k = b.dataset.gkw;
+    groupKwSel = !k ? [] : (groupKwSel.includes(k) ? groupKwSel.filter((x) => x !== k) : groupKwSel.concat(k));
+    renderGroupScreen();
+  });
+  $("groupSearch").addEventListener("input", (e) => { groupQuery = e.target.value; renderGroupScreen(); });
+  $("groupAlert").addEventListener("click", (e) => {
+    const g = groupById(state.groupOpen); if (!g) return;
+    const act = e.target.getAttribute("data-act");
+    if (act === "rejoin") openGroupForm("join", g.code);
+    if (act === "forget") { forgetGroup(g); goHome(); toast("Removed from this phone"); }
+  });
+  $("groupAuto").addEventListener("change", (e) => {
+    const g = groupById(state.groupOpen); if (!g) return;
+    groups.forEach((x) => { x.autoShare = false; });           // one auto-share group at a time
+    g.autoShare = e.target.checked;
+    saveGroups();
+    toast(g.autoShare ? "New walks will be shared to " + g.name : "New walks stay personal", 2200);
+  });
+  $("groupOnMap").addEventListener("change", (e) => { const g = groupById(state.groupOpen); if (!g) return; g.onMap = e.target.checked; saveGroups(); });
+  $("btnGroupBack").onclick = goHome;
+  $("btnGroupSync").onclick = () => { if (navigator.onLine === false) { toast("You're offline — changes will sync when you reconnect", 2600); return; } backoff = 0; syncAll().then(() => toast(groupStatus(groupById(state.groupOpen) || {}).text || "Synced", 1600)); };
+  $("btnGroupMap").onclick = () => { const g = groupById(state.groupOpen); if (g && g.onMap === false) { g.onMap = true; saveGroups(); } prefs.mapGroups = true; savePrefs(); showMap(); };
+  $("btnGroupInvite").onclick = () => {
+    const g = groupById(state.groupOpen); if (!g) return;
+    const link = location.origin + location.pathname + "#join=" + g.code;
+    const text = "Join my Perimeter Notes group “" + g.name + "”. Code: " + fmtCode(g.code) + ". Ask me for the PIN.";
+    if (navigator.share) { navigator.share({ title: "Perimeter Notes group", text, url: link }).catch(() => {}); return; }
+    const done = () => toast("Invite link copied (no PIN in it)", 2400);
+    if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(text + " " + link).then(done, () => prompt("Copy this invite:", text + " " + link));
+    else prompt("Copy this invite:", text + " " + link);
+  };
+  // Drop a group from this phone: its other members' walks go, your own walks stay (unshared).
+  function forgetGroup(g) {
+    const list = loadAll().filter((s) => !(s.group && s.group.gid === g.gid && !s.group.mine));
+    list.forEach((s) => { if (s.group && s.group.gid === g.gid) { delete s.group; delete s.sync; } });
+    if (state.session && state.session.group && state.session.group.gid === g.gid) { delete state.session.group; delete state.session.sync; }
+    saveRemote(list);
+    syncq = syncq.filter((x) => x.gid !== g.gid); saveQ();
+    groups = groups.filter((x) => x.gid !== g.gid); saveGroups();
+    if (state.groupOpen === g.gid) state.groupOpen = null;
+  }
+  $("btnGroupLeave").onclick = () => {
+    const g = groupById(state.groupOpen); if (!g) return;
+    const owner = g.role === "owner";
+    if (!confirm("Leave “" + g.name + "”?\n\nOther members' walks will be removed from this phone. Your own walks stay here, but stop syncing." +
+      (owner ? "\n\nYou created this group: after you leave, nobody can change its PIN or delete it. Use Delete group instead if you want it gone." : "") +
+      (pendingCount(g.gid) ? "\n\n" + pendingCount(g.gid) + " change(s) haven't synced yet and will be lost." : ""))) return;
+    const finish = () => { forgetGroup(g); goHome(); toast("You left " + g.name); };
+    if (g.revoked) { finish(); return; }
+    api("POST", "/v1/groups/" + g.gid + "/leave", {}, g).then(finish, (e) => {
+      if (e.status === 401 || e.status === 404) { finish(); return; }
+      if (confirm("Couldn't reach the server (" + e.message + "). Remove the group from this phone anyway? Your access stays valid on the server until the PIN is changed.")) finish();
+    });
+  };
+  $("btnGroupPin").onclick = () => {
+    const g = groupById(state.groupOpen); if (!g || g.role !== "owner") return;
+    const pin = prompt("New PIN for “" + g.name + "” (4+ digits or a 6+ character passphrase).\n\nEveryone else will be signed out of the group and must rejoin with the new PIN.");
+    if (pin == null) return;
+    if (/^\d+$/.test(pin) ? pin.length < 4 : pin.length < 6) { toast("PIN too short — use 4+ digits or 6+ characters", 3000); return; }
+    if (prompt("Type the new PIN again to confirm") !== pin) { toast("PINs didn't match — PIN not changed", 3000); return; }
+    api("POST", "/v1/groups/" + g.gid + "/pin", { pin }, g).then((r) => {
+      toast("PIN changed. " + (r.revoked ? r.revoked + (r.revoked === 1 ? " member must" : " members must") + " rejoin." : ""), 3500);
+      syncAll();
+    }, (e) => toast("PIN not changed: " + e.message, 3500));
+  };
+  $("btnGroupDelete").onclick = () => {
+    const g = groupById(state.groupOpen); if (!g || g.role !== "owner") return;
+    if (!confirm("Delete the group “" + g.name + "” for everyone?\n\nAll " + (g.walkCount || 0) + " shared walks and the member list are erased from the server. Members keep only their own walks on their phones. This can't be undone.")) return;
+    const typed = prompt("Type the group name (" + g.name + ") to delete it.");
+    if (typed == null || typed.trim().toLowerCase() !== String(g.name).trim().toLowerCase()) { toast("Name didn't match — nothing deleted", 3000); return; }
+    api("DELETE", "/v1/groups/" + g.gid, null, g).then(() => { forgetGroup(g); goHome(); toast("Group deleted"); }, (e) => toast("Couldn't delete: " + e.message, 3500));
+  };
+
+  /* ---------- review: share / unshare ---------- */
+  function renderShareBox() {
+    const s = state.review, box = $("shareBox");
+    if (!s) return;
+    const g = s.group && groupById(s.group.gid);
+    $("shareLabel").hidden = box.hidden = !groups.length && !g;
+    if (!groups.length && !g) { box.innerHTML = ""; return; }
+    if (g) {
+      const st = walkSyncText(s);
+      box.innerHTML = `<div class="share-on"><div><b>${s.group.mine ? "Shared to " : "From "}${escapeHtml(g.name)}</b><span>${s.group.mine ? "by you" : "by " + escapeHtml(s.group.by || "someone")}${s.group.editor && s.group.editor !== s.group.by ? " · last edit " + escapeHtml(s.group.editor) : ""} · <span class="sync-txt" id="walkSync">${escapeHtml(st)}</span></span></div>
+        ${s.group.mine ? '<button type="button" class="btn ghost small" data-act="unshare">Unshare</button>' : '<button type="button" class="btn ghost small" data-act="remove">Remove</button>'}</div>
+        <p class="tiny">${s.group.mine ? "Members of " + escapeHtml(g.name) + " can see and edit this walk." : "You can edit this walk; changes sync to everyone in " + escapeHtml(g.name) + "."}</p>`;
+      return;
+    }
+    if (s.demo) { box.innerHTML = '<p class="tiny" style="margin:0 0 4px">Preview walks can\'t be shared.</p>'; return; }
+    box.innerHTML = '<div class="share-pick">' + groups.filter((x) => !x.revoked).map((x) => `<button type="button" class="btn secondary small" data-share="${escapeHtml(x.gid)}">Share to ${escapeHtml(x.name)}</button>`).join("") + "</div>" +
+      '<p class="tiny">This walk is personal: it stays on this phone unless you share it.</p>';
+  }
+  $("shareBox").addEventListener("click", (e) => {
+    const s = state.review; if (!s) return;
+    const sb = e.target.closest("[data-share]");
+    if (sb) {
+      const g = groupById(sb.dataset.share); if (!g) return;
+      if (!s.points.length && !s.pins.length) { toast("Nothing to share yet — this walk has no GPS points"); return; }
+      s.group = { gid: g.gid, mine: true, by: g.nick, byId: g.memberId };
+      delete s.sync;
+      saveReview();
+      renderShareBox();
+      toast(navigator.onLine === false ? "Shared — will upload when you're back online" : "Shared to " + g.name, 2400);
+      return;
+    }
+    const act = e.target.getAttribute("data-act");
+    if (act === "unshare") {
+      const g = groupById(s.group.gid);
+      if (!confirm("Unshare this walk from " + (g ? g.name : "the group") + "? It disappears for the other members. Your copy stays on this phone.")) return;
+      if (g && s.sync) enqueue(g.gid, s.id, "del");
+      delete s.group; delete s.sync;
+      saveReview(); renderShareBox(); toast("Unshared — now personal again", 2000);
+    }
+    if (act === "remove") {
+      const g = groupById(s.group.gid);
+      if (!confirm("Remove “" + (s.label || "this walk") + "” from " + (g ? g.name : "the group") + " for everyone? This can't be undone.")) return;
+      remove(s.id);
+      backFromReview();
+      toast("Removed from the group");
+    }
+  });
+  function backFromReview() {
+    if (sampling) sampling.cancel();
+    const from = state.reviewFrom;
+    state.review = null; state.reviewFrom = null;
+    if (from === "map") showMap();
+    else if (from === "group" && groupById(state.groupOpen)) openGroup(state.groupOpen);
+    else goHome();
+  }
+  function autoShareFor(s) {
+    if (s.demo) return;
+    const g = groups.find((x) => x.autoShare && !x.revoked);
+    if (g && !s.group) s.group = { gid: g.gid, mine: true, by: g.nick, byId: g.memberId };
+  }
+
+  /* ---------- invite links: #join=CODE (never carries the PIN) ---------- */
+  function checkJoinLink() {
+    const m = /^#join=([0-9A-Za-z-]{4,16})$/.exec(location.hash || "");
+    if (!m) return;
+    try { history.replaceState(null, "", location.pathname + location.search); } catch (_) {}
+    openGroupForm("join", m[1]);
+  }
+  window.addEventListener("hashchange", checkJoinLink);
+  window.addEventListener("online", () => { groups.forEach((g) => { g.offline = false; }); backoff = 0; renderSyncUi(); scheduleSync(300); });
+  window.addEventListener("offline", () => renderSyncUi());
+  document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") scheduleSync(500); else clearTimeout(syncTimer); });
+
   /* ===================== Review ===================== */
   function goHome() {
     if (sampling) sampling.cancel();
@@ -2137,8 +2857,9 @@
     if (sampling) sampling.cancel();
     state.review = s;
     state.reviewFrom = from === "map" ? "map" : null;
-    $("btnBackHome").textContent = state.reviewFrom ? "‹ Map" : "‹ Home";
-    $("btnBackHome").setAttribute("aria-label", state.reviewFrom ? "Back to map" : "Back to home");
+    if (from === "group") state.reviewFrom = "group";
+    $("btnBackHome").textContent = state.reviewFrom === "map" ? "‹ Map" : state.reviewFrom === "group" ? "‹ Group" : "‹ Home";
+    $("btnBackHome").setAttribute("aria-label", state.reviewFrom === "map" ? "Back to map" : state.reviewFrom === "group" ? "Back to group" : "Back to home");
     pendingShare = null;
     if (!s.pins.some((p) => p.id === selectedPinId)) selectedPinId = s.pins[0] ? s.pins[0].id : null;
     $("labelField").value = s.label || "";
@@ -2146,6 +2867,7 @@
     reviewKw.render();
     openAddrForm(false);
     renderAddress();
+    renderShareBox();
     renderReviewHeader();
     renderPinList();
     showValidate();
@@ -2618,7 +3340,7 @@
 
   /* ---------- data ---------- */
   function mapWalkList() {
-    const all = loadAll();
+    const all = loadAll().filter((s) => isPersonal(s) || (prefs.mapGroups !== false && (groupById(s.group.gid) || {}).onMap !== false));
     const located = all.filter((s) => anchorOf(s));
     const useFilter = filterActive() && !mapState.ignoreFilter;
     return { all: located, list: useFilter ? located.filter((s) => matchesFilter(s) && matchesQuery(s)) : located, useFilter };
@@ -2849,6 +3571,13 @@
     note.textContent = msg;
     note.hidden = !msg;
   }
+  function renderMapGroupsBtn() {
+    const b = $("btnMapGroups");
+    b.hidden = !groups.length;
+    b.setAttribute("aria-pressed", String(prefs.mapGroups !== false));
+    b.textContent = prefs.mapGroups !== false ? "Group walks on" : "Group walks off";
+  }
+  $("btnMapGroups").onclick = () => { prefs.mapGroups = prefs.mapGroups === false; savePrefs(); renderMapGroupsBtn(); buildMapItems(); requestMapDraw(); };
   $("btnStreets").onclick = () => { prefs.streets = !streetsOn(); savePrefs(); requestMapDraw(); renderStreetsUi(""); };
   window.addEventListener("online", () => { if (current() === "map") requestMapDraw(); });
   window.addEventListener("offline", () => { if (current() === "map") requestMapDraw(); });
@@ -2913,6 +3642,7 @@
       }
     } else tileQueue = [];
     renderStreetsUi(streetStatus);
+    renderMapGroupsBtn();
     mapState.streets = { fade, status: streetStatus };
     ctx.lineJoin = "round";
     ctx.strokeStyle = "rgba(92,190,120,.75)";
@@ -3052,7 +3782,7 @@
     let best = opts[0];
     opts.forEach((o) => { if (o[0] * o[2] / mPerPx <= 110) best = o; });
     const px = best[0] * best[2] / mPerPx;
-    const x = 14, y = h - 156;
+    const x = 14, y = h - (groups.length ? 210 : 156);
     ctx.strokeStyle = "rgba(0,0,0,.6)"; ctx.lineWidth = 4; ctx.lineCap = "butt";
     const bar = () => { ctx.beginPath(); ctx.moveTo(x, y - 5); ctx.lineTo(x, y); ctx.lineTo(x + px, y); ctx.lineTo(x + px, y - 5); ctx.stroke(); };
     bar();
@@ -3418,10 +4148,7 @@
     if (e.key === "Enter" && !e.shiftKey && !e.isComposing) { e.preventDefault(); addPin($("noteField").value, false); }
   });
   $("btnMic").onclick = toggleMic;
-  $("btnBackHome").onclick = () => {
-    if (state.reviewFrom === "map") { if (sampling) sampling.cancel(); state.review = null; state.reviewFrom = null; showMap(); }
-    else goHome();
-  };
+  $("btnBackHome").onclick = backFromReview;
   function saveLabel() {
     const s = state.review;
     if (!s) return;
@@ -3445,9 +4172,10 @@
   $("btnDelete").onclick = () => {
     const s = state.review;
     if (!s) return;
-    if (!confirm("Delete “" + (s.label || "this walk") + "” from this iPhone? This can't be undone.")) return;
+    const g = s.group && groupById(s.group.gid);
+    if (!confirm("Delete “" + (s.label || "this walk") + "” from this iPhone?" + (g ? " It will also be removed from the group “" + g.name + "” for everyone." : "") + " This can't be undone.")) return;
     remove(s.id);
-    goHome();
+    backFromReview();
     toast("Deleted");
   };
   $("btnExport").onclick = exportBackup;
@@ -3527,6 +4255,7 @@
   // test hook (harmless in production)
   window.__pn = {
     geo, state, CFG, onFix, loadAll, activeDuration, GC, placeShort, placeFull,
+    groups: () => groups, syncq: () => syncq, syncAll, SYNC, API_BASE,
     geocodeTick, kickGeocoder, geoQueue: () => readJson(GEO_QUEUE),
     map: {
       state: mapState, MAP, toMerc, TILES, tileCache, tileStats: () => ({ size: tileCache.size, active: tileActive, wanted: tileWanted.size }),
@@ -3544,6 +4273,8 @@
   registerSW();
   renderHome();
   setInterval(geocodeTick, GC.TICK);
+  checkJoinLink();
+  scheduleSync(1200);
   setTimeout(geocodeTick, 800);
 })();
 </script>

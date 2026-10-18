@@ -1,0 +1,25 @@
+# Perimeter Notes groups API: Cloudflare Workers Free plan only.
+name = "perimeter-notes-groups"
+main = "src/index.js"
+compatibility_date = "2025-09-01"
+workers_dev = true
+preview_urls = false
+
+[vars]
+ALLOWED_ORIGINS = "https://richdow.github.io"
+
+# Request logs/traces stay off: walk contents are never logged.
+[observability]
+enabled = false
+
+[[durable_objects.bindings]]
+name = "GROUP"
+class_name = "Group"
+
+[[durable_objects.bindings]]
+name = "DIRECTORY"
+class_name = "Directory"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["Group", "Directory"]

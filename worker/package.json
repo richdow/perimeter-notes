@@ -1,0 +1,17 @@
+{
+  "name": "perimeter-notes-groups",
+  "version": "1.0.0",
+  "description": "Perimeter Notes groups API (Cloudflare Worker + Durable Objects, free plan)",
+  "scripts": {
+    "dev": "wrangler dev --port 8787",
+    "test": "node --test test/api.test.mjs",
+    "deploy": "wrangler deploy"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "module",
+  "devDependencies": {
+    "wrangler": "^4.151.1"
+  }
+}
