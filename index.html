@@ -140,7 +140,13 @@
       background: var(--panel); border: 1px solid var(--line);
       border-radius: 16px; padding: 14px; margin-bottom: 10px;
     }
-    .walk-card h3 { margin: 0 0 4px; font-size: 17px; overflow-wrap: anywhere; }
+    .walk-card h3 { margin: 0 0 4px; font-size: 17px; overflow-wrap: anywhere; min-width: 0; }
+    .card-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+    .walk-dist { flex: none; text-align: right; line-height: 1.1; }
+    .walk-dist b { display: block; font-size: 20px; font-weight: 800; color: var(--lime); font-variant-numeric: tabular-nums; letter-spacing: -0.01em; }
+    .walk-dist span { font-size: 12px; color: var(--muted); }
+    .saved-total { margin: -4px 2px 12px; font-size: 14px; color: var(--muted); }
+    .saved-total b { color: var(--text); font-variant-numeric: tabular-nums; }
     .walk-card p { margin: 0; color: var(--muted); font-size: 14px; }
     .badge { display: inline-block; font-size: 12px; font-weight: 750; border-radius: 6px; padding: 2px 7px; margin-left: 6px; vertical-align: 2px; }
     .badge.amber { background: var(--amber); color: var(--ink); }
@@ -369,6 +375,7 @@
         </div>
       </div>
       <p id="filterNote" class="filter-note" hidden aria-live="polite"></p>
+      <p id="savedTotal" class="saved-total" hidden aria-live="polite"></p>
       <div id="savedList"></div>
 
       <div class="section-head" style="margin-top:14px"><h2 class="section-label">Settings &amp; backup</h2></div>
@@ -1073,6 +1080,7 @@
       note.hidden = false;
       note.textContent = "Showing " + list.length + " of " + all.length + " walks tagged " + names.join(filterMode() === "any" ? " or " : " + ");
     } else { note.hidden = true; note.textContent = ""; }
+    $("savedTotal").hidden = true;
     if (!all.length) {
       box.innerHTML = '<div class="empty">Nothing saved yet. Begin a walk, drop a few notes, then give it a label.</div>';
       return;
@@ -1081,15 +1089,22 @@
       box.innerHTML = '<div class="empty">' + (filterMode() === "any" || homeFilter.length < 2 ? "No walks have these keywords." : "No walks have all of these keywords. Try Match any.") + '<br><button type="button" class="btn secondary small" data-filter-clear style="margin-top:10px">Show all walks</button></div>';
       return;
     }
+    const total = list.reduce((sum, s) => sum + pathStats(s).dist, 0);
+    const tot = $("savedTotal");
+    tot.hidden = false;
+    tot.innerHTML = "Total <b>" + escapeHtml(fmtDist(total)) + "</b> across " + list.length + (list.length === 1 ? " walk" : " walks");
     box.innerHTML = list.map((s) => {
       const st = pathStats(s);
       const unfinished = !s.stoppedAt;
       const when = unfinished ? "Started " + fmtTime(s.startedAt) : "Completed " + fmtTime(s.stoppedAt);
       return `
       <article class="walk-card" data-id="${escapeHtml(s.id)}">
-        <h3>${escapeHtml(s.label || "Untitled walk")}${unfinished ? '<span class="badge amber">unfinished</span>' : ""}${s.demo ? '<span class="badge muted">preview</span>' : ""}</h3>
+        <div class="card-head">
+          <h3>${escapeHtml(s.label || "Untitled walk")}${unfinished ? '<span class="badge amber">unfinished</span>' : ""}${s.demo ? '<span class="badge muted">preview</span>' : ""}</h3>
+          <div class="walk-dist" aria-label="Distance walked ${escapeHtml(fmtDist(st.dist))}"><b>${escapeHtml(fmtDist(st.dist))}</b><span>walked</span></div>
+        </div>
         <p>${escapeHtml(when)}</p>
-        <p>${escapeHtml(fmtDuration(st.duration))} · ${escapeHtml(fmtDist(st.dist))} · ${s.pins.length} ${s.pins.length === 1 ? "note" : "notes"}</p>
+        <p>${escapeHtml(fmtDuration(st.duration))} · ${s.pins.length} ${s.pins.length === 1 ? "note" : "notes"}</p>
         ${kwChipsHtml(s.keywords)}
         <div class="walk-actions">
           <button class="btn secondary small open">Open</button>
