@@ -259,6 +259,8 @@
     .kchip:focus-visible, .kchip-x:focus-visible { outline: 3px solid var(--blue); outline-offset: 2px; }
     .kw-row { margin: 8px 0 2px; }
     .kw-filter { margin: 0 0 12px; }
+    .filter-mode { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin: -2px 0 12px; }
+    .filter-mode .seg button { min-height: 40px; min-width: 104px; padding: 0 12px; font-size: 15px; }
     .filter-note { color: var(--muted); font-size: 14px; margin: -4px 2px 12px; }
     .hero .kw-editor { margin: 4px 0 14px; }
     .hero .field-label { margin-top: 2px; }
@@ -359,6 +361,13 @@
       </div>
       <div class="section-head"><h2 class="section-label">Saved walks</h2><span id="savedCount" class="count"></span></div>
       <div id="kwFilter" class="kw-filter" role="group" aria-label="Filter walks by keyword" hidden></div>
+      <div id="filterMode" class="filter-mode" hidden>
+        <span class="kw-label" id="filterModeLabel">Show walks that</span>
+        <div class="seg" role="group" aria-labelledby="filterModeLabel">
+          <button type="button" data-mode="all" aria-pressed="true">Match all</button>
+          <button type="button" data-mode="any" aria-pressed="false">Match any</button>
+        </div>
+      </div>
       <p id="filterNote" class="filter-note" hidden aria-live="polite"></p>
       <div id="savedList"></div>
 
@@ -1053,6 +1062,7 @@
     renderResume(all);
     renderUnits();
     renderFilterBar(all);
+    renderFilterMode();
     homeKw.render();
     const list = all.filter(matchesFilter);
     const box = $("savedList");
@@ -1061,14 +1071,14 @@
     if (homeFilter.length) {
       const names = allKeywords(all).filter((k) => homeFilter.includes(k.key)).map((k) => k.name);
       note.hidden = false;
-      note.textContent = "Showing " + list.length + " of " + all.length + " walks tagged " + names.join(" + ");
+      note.textContent = "Showing " + list.length + " of " + all.length + " walks tagged " + names.join(filterMode() === "any" ? " or " : " + ");
     } else { note.hidden = true; note.textContent = ""; }
     if (!all.length) {
       box.innerHTML = '<div class="empty">Nothing saved yet. Begin a walk, drop a few notes, then give it a label.</div>';
       return;
     }
     if (!list.length) {
-      box.innerHTML = '<div class="empty">No walks have all of these keywords.<br><button type="button" class="btn secondary small" data-filter-clear style="margin-top:10px">Show all walks</button></div>';
+      box.innerHTML = '<div class="empty">' + (filterMode() === "any" || homeFilter.length < 2 ? "No walks have these keywords." : "No walks have all of these keywords. Try Match any.") + '<br><button type="button" class="btn secondary small" data-filter-clear style="margin-top:10px">Show all walks</button></div>';
       return;
     }
     box.innerHTML = list.map((s) => {
@@ -1487,7 +1497,24 @@
     return kws.length ? `<div class="kw-row ${cls || ""}">` + kws.map((k) => `<span class="kchip static">${escapeHtml(k)}</span>`).join("") + "</div>" : "";
   }
 
-  function matchesFilter(s) { return homeFilter.every((f) => s.keywords.some((k) => k.toLowerCase() === f)); }
+  function filterMode() { return prefs.filterMode === "any" ? "any" : "all"; }
+  function matchesFilter(s) {
+    if (!homeFilter.length) return true;
+    const has = (f) => s.keywords.some((k) => k.toLowerCase() === f);
+    return filterMode() === "any" ? homeFilter.some(has) : homeFilter.every(has);
+  }
+  function renderFilterMode() {
+    const box = $("filterMode");
+    box.hidden = homeFilter.length < 2;          // only meaningful with 2+ keywords selected
+    box.querySelectorAll("[data-mode]").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.mode === filterMode())));
+  }
+  $("filterMode").addEventListener("click", (e) => {
+    const b = e.target.closest("[data-mode]");
+    if (!b || b.dataset.mode === filterMode()) return;
+    prefs.filterMode = b.dataset.mode;
+    savePrefs();
+    renderHome();
+  });
   function renderFilterBar(list) {
     const bar = $("kwFilter");
     const kws = allKeywords(list).filter((k) => k.count > 0)
