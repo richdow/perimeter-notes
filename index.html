@@ -21,6 +21,9 @@
   <meta name="color-scheme" content="dark" />
   <meta name="format-detection" content="telephone=no" />
   <meta name="apple-mobile-web-app-title" content="Perimeter Notes" />
+  <link rel="manifest" href="manifest.webmanifest" />
+  <link rel="apple-touch-icon" href="apple-touch-icon.png" />
+  <link rel="icon" type="image/png" href="icon-192.png" />
   <title>Perimeter Notes</title>
   <style>
     :root {
@@ -181,6 +184,7 @@
       font-variant-numeric: tabular-nums;
     }
     .hud span.mode { color: var(--ink); background: var(--amber); border-color: var(--amber); }
+    .hud span.offline { color: var(--ink); background: #c9d4e0; border-color: #c9d4e0; }
     .legend {
       position: absolute; left: 10px; bottom: 10px; pointer-events: none;
       background: rgba(11,13,16,.82); border: 1px solid var(--line);
@@ -361,7 +365,9 @@
             <li>Indoors it often drifts 20–50 m+ (65–165 ft). Treat interior pins as notes on a sketch, not measured rooms.</li>
             <li>The live map shows a blue circle for your phone's reported accuracy. The trail skips very rough readings and impossible jumps, and smooths out small jitter.</li>
             <li>Pins average your last few seconds of readings. Stand still for 3–5 seconds before pinning for the best result.</li>
-            <li>iPhone pauses location when the screen locks or Safari goes to the background. Keep the app open while you walk.</li>
+            <li>iPhone can't record location while the screen is locked or Safari is in the background. Keep this screen open while you walk. That time isn't counted as recording time, and the trail shows a dashed gap.</li>
+            <li>No internet needed to record: GPS works offline and the map is drawn on the phone. After your first visit the app opens offline too.</li>
+            <li>If the GPS signal drops, the walk keeps recording and reconnects on its own. Your walk is saved every few seconds.</li>
           </ul>
         </details>
       </div>
@@ -409,6 +415,7 @@
         <span id="hudPts">0 pts</span>
         <span id="hudPins">0 pins</span>
         <span id="hudMode" class="mode" hidden>preview</span>
+        <span id="hudOffline" class="offline" hidden>Offline · still recording</span>
       </div>
       <div id="walkBanner" class="banner" hidden role="status" aria-live="polite"></div>
       <div class="legend" aria-hidden="true"><span><i style="background:#b6f34a"></i>trail</span><span><i style="background:#ffbf47"></i>notes</span><span><i style="background:#6cb6ff"></i>you ± accuracy</span></div>
@@ -503,7 +510,10 @@
     LOST_AFTER: 15000,     // ms without a fix → "signal lost"
     GAP_AFTER_HIDDEN: 15000,
     CHECKPOINT_MS: 4000,   // throttle localStorage writes while walking
-    SAMPLE_MS: 5000        // ms of readings averaged for Check / Move pin
+    SAMPLE_MS: 5000,       // ms of readings averaged for Check / Move pin
+    WATCHDOG_MS: 20000,    // no fix for this long → restart the GPS watch
+    BACKOFF_BASE: 2000,    // first retry delay after a GPS error; doubles up to BACKOFF_MAX
+    BACKOFF_MAX: 30000
   };
 
   const $ = (id) => document.getElementById(id);
@@ -569,9 +579,15 @@
       stoppedAt: num(s.stoppedAt),
       demo: !!s.demo,
       keywords: normKeywords(s.keywords),
+      ...(Array.isArray(s.pauses) ? { pauses: normPauses(s.pauses) } : {}),
       points: (Array.isArray(s.points) ? s.points : []).map((p) => normPoint(p, startedAt)).filter(Boolean),
       pins: (Array.isArray(s.pins) ? s.pins : []).map((p) => normPin(p, startedAt, seen)).filter(Boolean)
     });
+  }
+
+  function normPauses(arr) {
+    return (Array.isArray(arr) ? arr : []).map((p) => p && { from: num(p.from), to: num(p.to) })
+      .filter((p) => p && p.from != null && p.to != null && p.to > p.from);
   }
 
   function loadAll() {
@@ -707,6 +723,29 @@
     s.pins.forEach((p) => { t = Math.max(t, p.t || 0); });
     return t;
   }
+  // Background / locked-screen stretches. New walks record them in s.pauses; older walks
+  // (no pauses field) derive them from the trail's gap markers; v1 walks have neither and
+  // fall back to start-to-finish. Nothing is written back, so old data isn't changed.
+  function pausesOf(s) {
+    if (Array.isArray(s.pauses)) return s.pauses;
+    const out = [], pts = s.points;
+    for (let i = 1; i < pts.length; i++) if (pts[i].gap && pts[i].t > pts[i - 1].t) out.push({ from: pts[i - 1].t, to: pts[i].t });
+    return out;
+  }
+  function activeDuration(s, endAt) {
+    const start = s.startedAt;
+    const end = endAt != null ? endAt : (s.stoppedAt || lastActivity(s));
+    if (!(end > start)) return 0;
+    const ps = pausesOf(s).map((p) => ({ from: Math.max(start, p.from), to: Math.min(end, p.to) }))
+      .filter((p) => p.to > p.from).sort((a, b) => a.from - b.from);
+    let paused = 0, curFrom = null, curTo = null;
+    ps.forEach((p) => {
+      if (curTo == null || p.from > curTo) { if (curTo != null) paused += curTo - curFrom; curFrom = p.from; curTo = p.to; }
+      else curTo = Math.max(curTo, p.to);
+    });
+    if (curTo != null) paused += curTo - curFrom;
+    return Math.max(0, end - start - paused);
+  }
   function pathStats(s) {
     let dist = 0;
     const pts = s.points;
@@ -719,7 +758,7 @@
       for (let i = 0; i < xy.length; i++) { const j = (i + 1) % xy.length; a += xy[i].x * xy[j].y - xy[j].x * xy[i].y; }
       area = Math.abs(a) / 2;
     }
-    return { dist, duration: end - s.startedAt, area };
+    return { dist, duration: activeDuration(s, end), area };
   }
 
   /* ===================== Screens + viewport (iOS keyboard / dvh) ===================== */
@@ -754,8 +793,8 @@
     const el = $("keepOpen");
     el.classList.toggle("warn", !!needed);
     el.textContent = needed
-      ? "Screen may sleep — keep Safari open and the screen on, or GPS pauses."
-      : "Screen stays on while recording. Don't switch apps — iPhone pauses GPS in the background.";
+      ? "Keep this screen open and unlocked. iPhone can't record GPS while Safari is in the background or the screen is locked."
+      : "Screen stays on while recording. iPhone can't record GPS in the background or with the screen locked, so stay on this screen.";
   }
   async function requestWake() {
     if (!state.session) return;
@@ -789,26 +828,31 @@
     status: "idle",           // idle | waiting | ok | denied | unavailable | insecure | error
     startedAt: 0, lastFixAt: 0, lastRaw: null,
     recent: [], kf: null, rejectRun: [], gapPending: false,
-    rejected: 0, ignored: 0, bannerDismissed: null
+    rejected: 0, ignored: 0, bannerDismissed: null,
+    firstStart: 0, restarts: 0, lastRestartAt: 0, backoff: 0, restartTimer: null
   };
 
   function resetGeo() {
     stopGeo();
     Object.assign(geo, {
       status: "idle", startedAt: Date.now(), lastFixAt: 0, lastRaw: null,
-      recent: [], kf: null, rejectRun: [], gapPending: false, rejected: 0, ignored: 0, bannerDismissed: null
+      recent: [], kf: null, rejectRun: [], gapPending: false, rejected: 0, ignored: 0, bannerDismissed: null,
+      firstStart: Date.now(), restarts: 0, lastRestartAt: 0, backoff: 0, restartTimer: null
     });
   }
   function stopGeo() {
     geo.token++;
+    clearTimeout(geo.restartTimer); geo.restartTimer = null;
     if (geo.watchId != null && navigator.geolocation) navigator.geolocation.clearWatch(geo.watchId);
     geo.watchId = null;
   }
-  function startGeo() {
+  function startGeo(isRestart) {
     stopGeo();
     geo.startedAt = Date.now();
+    if (!geo.firstStart) geo.firstStart = geo.startedAt;
     if (!("geolocation" in navigator)) { setGeoStatus("unavailable"); return; }
-    setGeoStatus(window.isSecureContext === false ? "insecure" : "waiting");
+    // a restart keeps "ok" (shown as signal lost) so the UI doesn't flip back to "waiting"
+    if (!isRestart || geo.status !== "ok") setGeoStatus(window.isSecureContext === false ? "insecure" : "waiting");
     const token = geo.token;
     try {
       geo.watchId = navigator.geolocation.watchPosition(
@@ -833,9 +877,33 @@
   function onGeoError(err) {
     const code = err && err.code;
     if (code === 1) { stopGeo(); setGeoStatus("denied"); return; }
-    // 2 = unavailable, 3 = timeout: the watch keeps running; just reflect it quietly.
+    // 2 = unavailable, 3 = timeout. iOS can leave a watch silently dead after these,
+    // so restart it with backoff instead of trusting it to recover.
     if (!geo.lastFixAt) setGeoStatus(code === 2 ? "error" : "waiting");
+    scheduleRestart();
     renderGeoUi();
+  }
+  function canRestart() {
+    return state.session && !state.demo && geo.status !== "denied" && geo.status !== "unavailable" && document.visibilityState !== "hidden";
+  }
+  function restartGeo() {
+    if (!canRestart()) return;
+    geo.restarts++;
+    geo.lastRestartAt = Date.now();
+    startGeo(true);
+  }
+  function scheduleRestart() {
+    if (geo.restartTimer || !canRestart()) return;
+    const delay = Math.min(CFG.BACKOFF_MAX, CFG.BACKOFF_BASE * Math.pow(2, geo.backoff));
+    geo.backoff = Math.min(geo.backoff + 1, 6);
+    geo.restartTimer = setTimeout(() => { geo.restartTimer = null; restartGeo(); }, delay);
+  }
+  // Called from the 1 s clock tick: if no fix for WATCHDOG_MS, restart the watch.
+  function geoWatchdog() {
+    if (!canRestart() || geo.restartTimer) return;
+    const now = Date.now();
+    const since = now - (geo.lastFixAt || geo.firstStart || now);
+    if (since > CFG.WATCHDOG_MS && now - Math.max(geo.lastRestartAt, geo.startedAt) > CFG.WATCHDOG_MS) restartGeo();
   }
 
   function kfUpdate(kf, fix, q) {
@@ -861,6 +929,8 @@
   }
 
   function onFix(fix) {
+    geo.backoff = 0;
+    clearTimeout(geo.restartTimer); geo.restartTimer = null;
     geo.lastRaw = fix;
     geo.lastFixAt = fix.t;
     lastLiveFix = fix;
@@ -1011,7 +1081,7 @@
       case "insecure": cls += " bad"; text = "Needs https"; break;
       case "error": cls += " warn"; text = "No position yet"; break;
       case "ok":
-        if (lost) { cls += " warn"; text = "No fix · " + Math.round((now - geo.lastFixAt) / 1000) + " s"; }
+        if (lost) { cls += " warn"; text = "Signal lost · still recording"; }
         else { const t = accTier(geo.lastRaw.acc); cls += " " + t.cls; text = (state.demo ? "Preview · " : "") + fmtAcc(geo.lastRaw.acc) + " · " + t.word; }
         break;
       default: cls += " live"; text = state.demo ? "Starting preview…" : "Waiting for GPS…";
@@ -1028,7 +1098,7 @@
   function renderWalkBanner(lost) {
     const el = $("walkBanner");
     let key = null, cls = "banner", html = "";
-    const waited = Date.now() - geo.startedAt;
+    const waited = Date.now() - (geo.firstStart || geo.startedAt);
     if (state.demo) key = null;
     else if (geo.status === "denied") {
       key = "denied"; cls += " bad";
@@ -1045,14 +1115,17 @@
       html = "<strong>Finding your location…</strong>The first fix can take 10–30 seconds. Outdoors or near a window helps.";
     } else if (geo.status === "ok" && lost) {
       key = "lost"; cls += " warn";
-      html = "<strong>GPS signal lost</strong>The trail is paused and will pick up again on its own.";
+      html = "<strong>GPS signal lost — still recording</strong>No fix for " + Math.round((Date.now() - geo.lastFixAt) / 1000) +
+        " s. Your walk and pins are saved; new pins use the last good position. Reconnecting automatically" +
+        (geo.restarts ? " (attempt " + geo.restarts + ")" : "") + ".";
     } else if (geo.status === "ok" && geo.lastRaw && geo.lastRaw.acc > CFG.TRAIL_MAX_ACC) {
       key = "weak"; cls += " warn";
       html = "<strong>Weak signal (" + escapeHtml(fmtAcc(geo.lastRaw.acc)) + ")</strong>Common indoors. Very rough readings stay off the trail, and pins here will be approximate.";
     }
     if (key && key === geo.bannerDismissed) key = null;
     if (!key) { if (!el.hidden) el.hidden = true; el.dataset.key = ""; return; }
-    if (el.dataset.key !== key) {
+    if (el.dataset.key !== key || (key === "lost" && el.dataset.html !== html)) {
+      el.dataset.html = html;
       el.innerHTML = html + '<button class="x" data-act="dismiss" aria-label="Dismiss">×</button>';
       el.dataset.key = key;
     }
@@ -1134,6 +1207,9 @@
     if (location.protocol === "file:" || window.isSecureContext === false) {
       out.push('<div class="alert bad"><strong>Open this from an https:// address</strong>iPhone blocks location and the microphone for files and non-secure pages, so walks can\'t be recorded from here. Preview still works.</div>');
     }
+    if (navigator.onLine === false) {
+      out.push('<div class="alert" id="offlineAlert"><strong>You\'re offline</strong>Everything still works: recording, GPS, pins and saving all happen on this iPhone. Dictation, Open in Maps and sending may need a connection.</div>');
+    }
     if (!storageOK) {
       out.push('<div class="alert bad"><strong>Saving is turned off</strong>Safari isn\'t letting this page store data (Private Browsing?). Walks will be lost when you close the tab.</div>');
     }
@@ -1178,6 +1254,7 @@
   });
   function finishStored(s) {
     s.stoppedAt = lastActivity(s);
+    delete s.pausedAt;
     if (!s.label) s.label = defaultLabel(s);
     upsert(s);
     openReview(s.id);
@@ -1212,7 +1289,14 @@
       pendingKeywords = [];
       if ($("homeKwInput")) $("homeKwInput").value = "";
     }
-    if (resume) { s.stoppedAt = null; geo.gapPending = true; }
+    if (resume) {
+      s.stoppedAt = null;
+      geo.gapPending = true;
+      // the time Safari was closed doesn't count as recording time
+      const from = num(s.pausedAt) || lastActivity(s);
+      s.pauses = pausesOf(s).concat(Date.now() > from ? [{ from, to: Date.now() }] : []);
+      delete s.pausedAt;
+    } else s.pauses = [];
     state.session = s;
     state.demo = !!s.demo;
     state.dist = pathStats(s).dist;
@@ -1220,7 +1304,7 @@
     state.startedMs = Date.now();
     $("noteField").value = "";
     $("hudMode").hidden = !state.demo;
-    $("walkClock").textContent = fmtClock(state.clockBase);
+    $("walkClock").textContent = fmtClock(activeDuration(s, Date.now()));
     $("walkBanner").hidden = true;
     setKeepOpenHint(false);
     updateWalkHud();
@@ -1239,7 +1323,8 @@
   }
   function tick() {
     if (!state.session) return;
-    $("walkClock").textContent = fmtClock(state.clockBase + Date.now() - state.startedMs);
+    if (!state.session.pausedAt) $("walkClock").textContent = fmtClock(activeDuration(state.session, Date.now()));
+    geoWatchdog();
     renderGeoUi();
   }
   function updateWalkHud() {
@@ -1337,6 +1422,7 @@
 
   function teardownWalk() {
     stopGeo();
+    clearTimeout(geo.restartTimer); geo.restartTimer = null;
     clearInterval(state.clockTimer); state.clockTimer = null;
     clearInterval(state.demoTimer); state.demoTimer = null;
     clearTimeout(state.cpTimer); state.cpTimer = null;
@@ -1359,6 +1445,7 @@
       return;
     }
     s.stoppedAt = Date.now();
+    delete s.pausedAt;
     if (!s.label) s.label = defaultLabel(s);
     upsert(s);
     openReview(s.id);
@@ -1403,11 +1490,11 @@
       if (code === "aborted") return;
       if (code === "not-allowed" || code === "service-not-allowed") toast("Mic blocked — allow Microphone for this site and turn on Siri & Dictation", 4200);
       else if (code === "no-speech") toast("Didn't catch that — try again");
-      else if (code === "network") toast("Speech service unreachable — type the note");
+      else if (code === "network") toast("Dictation needs an internet connection — type the note or use the keyboard's mic key", 4000);
       else toast("Mic failed — type the note");
     };
     rec.onend = () => { if (mic.rec === rec) { mic.rec = null; mic.active = false; setMicUi(false); } };
-    try { rec.start(); mic.active = true; setMicUi(true); toast("Listening… tap the mic again to stop", 1800); }
+    try { rec.start(); mic.active = true; setMicUi(true); toast(navigator.onLine === false ? "Listening… you're offline, so dictation may not work" : "Listening… tap the mic again to stop", 2200); }
     catch (_) { mic.rec = null; mic.active = false; setMicUi(false); toast("Mic is busy — try again"); }
   }
 
@@ -1602,7 +1689,7 @@
     const med = accs.length ? accs[Math.floor(accs.length / 2)] : null;
     $("reviewStats").innerHTML =
       `<div class="stat"><b>${escapeHtml(fmtDist(st.dist))}</b><span>walked</span></div>` +
-      `<div class="stat"><b>${escapeHtml(fmtDuration(st.duration))}</b><span>duration</span></div>` +
+      `<div class="stat"><b>${escapeHtml(fmtDuration(st.duration))}</b><span>active time</span></div>` +
       `<div class="stat"><b>${escapeHtml(med == null ? "—" : fmtAcc(med))}</b><span>typical GPS</span></div>` +
       (st.area ? `<div class="stat full"><b>≈ ${escapeHtml(fmtArea(st.area))}</b><span>enclosed by the loop (rough: GPS error adds up)</span></div>` : "");
   }
@@ -2020,7 +2107,7 @@
     drawSession(c, session, {
       unit: 3,
       headline: session.label || "Perimeter Notes",
-      sub: fmtTime(session.startedAt) + "  ·  " + fmtDist(st.dist) + "  ·  " + session.pins.length + " highlights" + (session.keywords.length ? "  ·  " + session.keywords.join(", ") : ""),
+      sub: fmtTime(session.startedAt) + "  ·  " + fmtDist(st.dist) + "  ·  " + fmtDuration(st.duration) + "  ·  " + session.pins.length + " highlights" + (session.keywords.length ? "  ·  " + session.keywords.join(", ") : ""),
       footer: "Lime = GPS trail · amber = notes · ± GPS accuracy; indoors can drift 20–50 m",
       emptyText: "No location data"
     });
@@ -2061,7 +2148,7 @@
 <body>
 <div class="wrap">
   <h1>${escapeHtml(session.label || "Perimeter Notes")}</h1>
-  <p class="sub">${escapeHtml(fmtTime(session.startedAt))} · ${escapeHtml(fmtDuration(st.duration))} · ${escapeHtml(fmtDist(st.dist))} walked · ${session.pins.length} highlights${st.area ? " · ≈ " + escapeHtml(fmtArea(st.area)) + " enclosed" : ""}</p>
+  <p class="sub">${escapeHtml(fmtTime(session.startedAt))} · ${escapeHtml(fmtDuration(st.duration))} active · ${escapeHtml(fmtDist(st.dist))} walked · ${session.pins.length} highlights${st.area ? " · ≈ " + escapeHtml(fmtArea(st.area)) + " enclosed" : ""}</p>
   ${session.keywords.length ? '<p class="kw">' + session.keywords.map((k) => '<span>' + escapeHtml(k) + '</span>').join("") + '</p>' : ""}
   <img alt="Venue diagram" src="${pngDataUrl}"/>
   <button onclick="var d=document.documentElement,f=d.requestFullscreen||d.webkitRequestFullscreen;if(f){try{f.call(d)}catch(e){alert('Full screen is not available here')}}else{alert('iPhone Safari has no full-screen mode for pages. Pinch to zoom the image instead.')}">Open full screen</button>
@@ -2147,7 +2234,7 @@
     const st = pathStats(session);
     const body = [
       subject,
-      "Completed " + fmtTime(session.stoppedAt || session.startedAt) + " · " + fmtDuration(st.duration) + " · " + fmtDist(st.dist),
+      "Completed " + fmtTime(session.stoppedAt || session.startedAt) + " · " + fmtDuration(st.duration) + " active · " + fmtDist(st.dist),
       ...(session.keywords.length ? ["Keywords: " + session.keywords.join(", ")] : []),
       "",
       "Highlights:",
@@ -2245,30 +2332,69 @@
   window.addEventListener("resize", onViewport);
   if (window.visualViewport) window.visualViewport.addEventListener("resize", onViewport);
   window.addEventListener("orientationchange", () => setTimeout(onViewport, 250));
-  document.addEventListener("visibilitychange", () => {
-    if (!state.session) return;
-    if (document.visibilityState === "hidden") {
-      state.hiddenAt = Date.now();
-      checkpoint(true);
-      stopMic();
-    } else {
-      if (state.hiddenAt && Date.now() - state.hiddenAt > CFG.GAP_AFTER_HIDDEN && !state.demo) {
-        geo.gapPending = true;
-        toast("GPS paused while Safari was in the background (" + Math.round((Date.now() - state.hiddenAt) / 1000) + " s)", 3500);
-      }
-      state.hiddenAt = 0;
-      requestWake();
-      renderGeoUi();
+  // iOS stops GPS when Safari is backgrounded or the screen locks. Record that stretch as a
+  // pause (not active time), save immediately, and restart the GPS watch on return.
+  function onHidden() {
+    const s = state.session;
+    if (!s || s.pausedAt) return;
+    state.hiddenAt = Date.now();
+    s.pausedAt = state.hiddenAt;
+    checkpoint(true);
+    stopMic();
+    releaseWake();      // browsers drop it when hidden anyway; release cleanly so it's always re-taken
+  }
+  function onVisible() {
+    const s = state.session;
+    if (!s) return;
+    const now = Date.now();
+    if (s.pausedAt) {
+      if (now > s.pausedAt) s.pauses = pausesOf(s).concat({ from: s.pausedAt, to: now });
+      delete s.pausedAt;
     }
-  });
-  window.addEventListener("pagehide", () => { if (state.session) checkpoint(true); });
+    if (state.hiddenAt && now - state.hiddenAt > CFG.GAP_AFTER_HIDDEN && !state.demo) {
+      geo.gapPending = true;
+      toast("GPS paused while Safari was in the background (" + Math.round((now - state.hiddenAt) / 1000) + " s) — not counted as recording time", 3800);
+    }
+    state.hiddenAt = 0;
+    checkpoint(true);
+    requestWake();
+    if (!state.demo && geo.status !== "denied") { geo.backoff = 0; restartGeo(); }   // the old watch may be dead
+    renderGeoUi();
+  }
+  document.addEventListener("visibilitychange", () => { if (document.visibilityState === "hidden") onHidden(); else onVisible(); });
+  document.addEventListener("freeze", onHidden);
+  document.addEventListener("resume", onVisible);
+  window.addEventListener("pagehide", () => { if (state.session) { onHidden(); checkpoint(true); } });
+  window.addEventListener("pageshow", (e) => { if (e.persisted && state.session) onVisible(); });
+  // Some iOS versions drop the wake lock on their own; any tap while recording re-takes it.
+  $("walk").addEventListener("pointerdown", () => { if (state.session && !wakeLock) requestWake(); });
+
+  // Offline indicator: nothing in recording needs the network.
+  function renderOnline() {
+    const off = navigator.onLine === false;
+    $("hudOffline").hidden = !off;
+    if (current() === "home") renderHomeAlerts();
+  }
+  window.addEventListener("online", () => { renderOnline(); toast("Back online"); });
+  window.addEventListener("offline", () => { renderOnline(); toast("Offline — recording and saving still work"); });
+
+  // Service worker: lets the app open with no connection after the first visit.
+  function registerSW() {
+    if (!("serviceWorker" in navigator) || !/^https?:$/.test(location.protocol) || window.isSecureContext === false) return;
+    navigator.serviceWorker.register("sw.js").then(() => navigator.serviceWorker.ready).then((reg) => {
+      const sw = reg.active || navigator.serviceWorker.controller;
+      if (sw) sw.postMessage({ type: "cache-page", url: location.href.split("#")[0] });
+    }).catch(() => {});
+  }
   window.addEventListener("storage", (e) => { if (e.key === STORE && current() === "home") renderHome(); });
 
   // test hook (harmless in production)
-  window.__pn = { geo, state, CFG, onFix, loadAll };
+  window.__pn = { geo, state, CFG, onFix, loadAll, activeDuration };
 
   fitViewport();
   watchPermission();
+  renderOnline();
+  registerSW();
   renderHome();
 })();
 </script>
