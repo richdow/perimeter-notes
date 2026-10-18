@@ -144,7 +144,7 @@
     .card-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
     .walk-dist { flex: none; text-align: right; line-height: 1.1; }
     .walk-dist b { display: block; font-size: 20px; font-weight: 800; color: var(--lime); font-variant-numeric: tabular-nums; letter-spacing: -0.01em; }
-    .walk-dist span { font-size: 12px; color: var(--muted); }
+    .walk-dist b.walk-time { color: var(--text); margin-top: 3px; }
     .saved-total { margin: -4px 2px 12px; font-size: 14px; color: var(--muted); }
     .saved-total b { color: var(--text); font-variant-numeric: tabular-nums; }
     .walk-card p { margin: 0; color: var(--muted); font-size: 14px; }
@@ -638,11 +638,14 @@
     const mm = String(m).padStart(2, "0") + ":" + String(s % 60).padStart(2, "0");
     return h ? h + ":" + mm : mm;
   }
+  // 45 s · 18 min · 1 h 12 min (used by the review stats and the history list alike)
   function fmtDuration(ms) {
-    const min = Math.round(Math.max(0, ms) / 60000);
-    if (min < 1) return "<1 min";
+    const s = Math.round(Math.max(0, isFinite(ms) ? ms : 0) / 1000);
+    if (s < 60) return s + " s";
+    const min = Math.round(s / 60);
     if (min < 60) return min + " min";
-    return Math.floor(min / 60) + " h " + String(min % 60).padStart(2, "0") + " m";
+    const h = Math.floor(min / 60), m = min % 60;
+    return m ? h + " h " + m + " min" : h + " h";
   }
   function fmtCoord(n) { return Number(n).toFixed(6); }
   function fmtDist(m) {
@@ -1089,10 +1092,11 @@
       box.innerHTML = '<div class="empty">' + (filterMode() === "any" || homeFilter.length < 2 ? "No walks have these keywords." : "No walks have all of these keywords. Try Match any.") + '<br><button type="button" class="btn secondary small" data-filter-clear style="margin-top:10px">Show all walks</button></div>';
       return;
     }
-    const total = list.reduce((sum, s) => sum + pathStats(s).dist, 0);
+    let total = 0, totalMs = 0;
+    list.forEach((s) => { const st = pathStats(s); total += st.dist; totalMs += Math.max(0, st.duration); });
     const tot = $("savedTotal");
     tot.hidden = false;
-    tot.innerHTML = "Total <b>" + escapeHtml(fmtDist(total)) + "</b> across " + list.length + (list.length === 1 ? " walk" : " walks");
+    tot.innerHTML = "Total <b>" + escapeHtml(fmtDist(total)) + " · " + escapeHtml(fmtDuration(totalMs)) + "</b> across " + list.length + (list.length === 1 ? " walk" : " walks");
     box.innerHTML = list.map((s) => {
       const st = pathStats(s);
       const unfinished = !s.stoppedAt;
@@ -1101,10 +1105,10 @@
       <article class="walk-card" data-id="${escapeHtml(s.id)}">
         <div class="card-head">
           <h3>${escapeHtml(s.label || "Untitled walk")}${unfinished ? '<span class="badge amber">unfinished</span>' : ""}${s.demo ? '<span class="badge muted">preview</span>' : ""}</h3>
-          <div class="walk-dist" aria-label="Distance walked ${escapeHtml(fmtDist(st.dist))}"><b>${escapeHtml(fmtDist(st.dist))}</b><span>walked</span></div>
+          <div class="walk-dist" aria-label="${escapeHtml(fmtDist(st.dist))} walked in ${escapeHtml(fmtDuration(st.duration))}"><b>${escapeHtml(fmtDist(st.dist))}</b><b class="walk-time">${escapeHtml(fmtDuration(st.duration))}</b></div>
         </div>
         <p>${escapeHtml(when)}</p>
-        <p>${escapeHtml(fmtDuration(st.duration))} · ${s.pins.length} ${s.pins.length === 1 ? "note" : "notes"}</p>
+        <p>${s.pins.length} ${s.pins.length === 1 ? "note" : "notes"}</p>
         ${kwChipsHtml(s.keywords)}
         <div class="walk-actions">
           <button class="btn secondary small open">Open</button>
